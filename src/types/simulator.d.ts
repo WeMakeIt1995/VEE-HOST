@@ -21,9 +21,17 @@ export interface PinsPlaceConfig {
   padding: number;
 };
 
+interface CommunicationInterface {
+  type: "vee-spi",
+  getPathInQemuQom: (qomId) => string,
+}
+
 export interface ICType {
+  type: "IC" | "Display" | "MCU";
   id: string;
   name: string;
+  qemuDeviceType: string,
+  qemuDeviceId: string,
   category: string;
   topPinsPlaceConfig: PinsPlaceConfig;
   rightPinsPlaceConfig: PinsPlaceConfig;
@@ -36,6 +44,19 @@ export interface ICType {
   width: number;
   height: number;
   image: string;
+
+  getPinPathInQemuQom: (qomId: string, pin: PinDefinition, interfaces: CommunicationInterface[], interfacesQomId: string[]) => string;
+
+  communicationInterfaces?: CommunicationInterface[];
+
+  display?: {
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+    pixelWidth: number,
+    pixelHeight: number,
+  };
 }
 
 export enum PinType {
@@ -59,6 +80,7 @@ interface ICInstance {
   rotation: number;
   icType: ICType;
   properties: Record<string, any>;
+  communicationInterfaces: string[],
 }
 
 interface Connection {

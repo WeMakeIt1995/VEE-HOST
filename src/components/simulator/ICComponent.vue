@@ -2,11 +2,12 @@
 
 console.info(`make IC`);
 
-import { computed, inject, ref, reactive } from 'vue';
+import { computed, inject, ref, reactive, watch } from 'vue';
 import type { ICInstance, ICType, PinDefinition } from '@/types/simulator';
 import type { SimulatorStore } from '@/stores/simulator';
 import { transform } from 'typescript';
 import type { ComputedRef } from 'vue';
+import { onMounted } from 'vue';
 
 const mainImageLeft = ref(0);
 const mainImageTop = ref(0);
@@ -14,43 +15,23 @@ const mainImageWidth = ref(0);
 const mainImageHeight = ref(0);
 const pinImgLoaded = ref(false);
 const pinImageSize = ref({ width: 0, height: 0 });
-const pinsHiddenStatus = reactive<boolean[]>([]);
 
 const props = defineProps<{
   ic: ICInstance;
   selected: boolean;
+  displayData: number[];
 }>();
 
 const icType = props.ic.icType;
 
-for (let i = 0; i < props.ic.icType.topPins.length; i ++) {
-  pinsHiddenStatus.push(false);
-}
-for (let i = 0; i < props.ic.icType.rightPins.length; i ++) {
-  pinsHiddenStatus.push(false);
-}
-for (let i = 0; i < props.ic.icType.bottomPins.length; i ++) {
-  pinsHiddenStatus.push(false);
-}
-for (let i = 0; i < props.ic.icType.leftPins.length; i ++) {
-  pinsHiddenStatus.push(false);
-}
-
-let lastSelectPinIdx: null | number = null;
-let currentSelectPinIdx: null | number = lastSelectPinIdx;
-
-setInterval(() => {
-  if (currentSelectPinIdx !== null) {
-    pinsHiddenStatus[currentSelectPinIdx] = ! pinsHiddenStatus[currentSelectPinIdx];
-  }
-}, 1000)
-
 const emit = defineEmits<{
-  (e: 'pin-click', icId: string, pinId: string): void;
+  (e: 'pin-click', icId: string, pinImgId: string, pinId: string, pinAnchorId: string): void;
   (e: 'click'): void;
 }>();
 
-// const simulatorStore = inject<SimulatorStore>('simulatorStore')!;
+const displaySrc = ref<string>("");
+
+const simulatorStore = inject<SimulatorStore>('simulatorStore')!;
 
 // const icType: ComputedRef<ICType> = computed(() => {
 //   return simulatorStore.state.icTypes.find(t => t.id === props.ic.typeId);
@@ -61,14 +42,25 @@ const emit = defineEmits<{
 //   emit('pin-click', props.ic.id, pinId);
 // }
 
-function handlePinClick(idx: number) {
-  console.log(`last select pin ${lastSelectPinIdx}, current select pin ${idx}`)
+function createPinImageId(ic: ICInstance, pin: PinDefinition)
+{
+  return simulatorStore.createPinImageId(ic, pin);
+}
 
-  if (idx !== lastSelectPinIdx && lastSelectPinIdx !== null) {
-    pinsHiddenStatus[lastSelectPinIdx] = false;
-  }
-  currentSelectPinIdx = idx;
-  lastSelectPinIdx = currentSelectPinIdx;
+function createPinId(ic: ICInstance, pin: PinDefinition)
+{
+  return simulatorStore.createPinId(ic, pin);
+}
+
+function createPinAnchorId(ic: ICInstance, pin: PinDefinition)
+{
+  return simulatorStore.createPinAnchorId(ic, pin);
+}
+
+function handlePinClick(idx: number, pin: PinDefinition, event: MouseEvent) {
+  event.stopPropagation();
+
+  emit('pin-click', props.ic.id, createPinImageId(props.ic, pin), createPinId(props.ic, pin), createPinAnchorId(props.ic, pin));
 }
 
 function getPinImage(pin: PinDefinition) {
@@ -102,205 +94,279 @@ pinImg.onerror = (error) => {
   console.log(`load pin image faild`);
 };
 
-function getTopPinStyle(pin: PinDefinition, idx: number) {
+function getDisplayStyle() {
+  return {
+    position: 'absolute',
+    width: props.ic.icType.display?.width + 'px',
+    height: props.ic.icType.display?.height + 'px',
+    left: props.ic.icType.display?.left + 'px',
+    top: props.ic.icType.display?.top + 'px',
+  }
+}
+
+function getTopPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+  let left = 0;
+  let top = 0;
+
   switch (icType.topPinsPlaceConfig.alignment) {
     case "center": {
-      return {
-        position: 'absolute',
-        width: pinImg.width + 'px',
-        height: pinImg.height + 'px',
-        left: icType.width / 2 -
-              icType.topPins.length / 2 * (pinImg.height + icType.topPinsPlaceConfig.gap) +
-              idx * (pinImg.height + icType.topPinsPlaceConfig.gap) -
-              1 +
-              'px',
-        top: pinImg.width - 1 + 'px',
-        transform: 'rotate(-90deg)',
-        transformOrigin: 'left top',
-      };
-    }
+      left = icType.width / 2 -
+            icType.topPins.length / 2 * (pinImg.height + icType.topPinsPlaceConfig.gap) +
+            idx * (pinImg.height + icType.topPinsPlaceConfig.gap) - 1;
+      top = pinImg.width - 1;
+    } break;
 
     case 'left': {
-      return {
-        position: 'absolute',
-        width: pinImg.width + 'px',
-        height: pinImg.height + 'px',
-        left: pinImg.width + icType.topPinsPlaceConfig.padding +
-              idx * (pinImg.height + icType.topPinsPlaceConfig.gap) -
-              1 +
-              'px',
-        top: pinImg.width + 'px',
-        transform: 'rotate(-90deg)',
-        transformOrigin: 'left top',
-      };
-    }
+      left = pinImg.width + icType.topPinsPlaceConfig.padding +
+            idx * (pinImg.height + icType.topPinsPlaceConfig.gap) - 1;
+      top = pinImg.width;
+    } break;
 
     case 'right': {
-      return {
-        position: 'absolute',
-        width: pinImg.width + 'px',
-        height: pinImg.height + 'px',
-        left: icType.width - pinImg.width - pinImg.height - icType.topPinsPlaceConfig.padding -
-              (icType.topPins.length - 1 - idx) * (pinImg.height + icType.topPinsPlaceConfig.gap) -
-              1 +
-              'px',
-        top: pinImg.width + 'px',
-        transform: 'rotate(-90deg)',
-        transformOrigin: 'left top',
-      };
-    }
+        left = icType.width - pinImg.width - pinImg.height - icType.topPinsPlaceConfig.padding -
+              (icType.topPins.length - 1 - idx) * (pinImg.height + icType.topPinsPlaceConfig.gap) - 1;
+        top = pinImg.width;
+    } break;
   }
+
+  return {
+    position: 'absolute',
+    width: pinImg.width + 'px',
+    height: pinImg.height + 'px',
+    left: left + 'px',
+    top: top + 'px',
+    transform: 'rotate(-90deg)',
+    transformOrigin: 'left top',
+  };
 }
 
-function getRightPinStyle(pin: PinDefinition, idx: number) {
-  switch (icType.rightPinsPlaceConfig.alignment) {
+function getTopPinAnchorStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+  let s = getTopPinStyle(ic, pin, idx)
+
+  return {
+    position: 'absolute',
+    width: '0px',
+    height: '0px',
+    left: parseInt(s.left) + pinImg.height / 2 + 'px',
+    top: parseInt(s.top) - pinImg.width + 'px',
+    opacity: '0',
+  };
+}
+
+function getRightPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+  let left = 0;
+  let top = 0;
+
+  switch (icType.topPinsPlaceConfig.alignment) {
     case "center": {
-      return {
-        position: 'absolute',
-        width: pinImg.width + 'px',
-        height: pinImg.height + 'px',
-        left: icType.width - pinImg.width - 1 + 'px',
-        top:  icType.height / 2 -
-              icType.rightPins.length / 2 * (pinImg.height + icType.rightPinsPlaceConfig.gap) +
-              idx * (pinImg.height + icType.rightPinsPlaceConfig.gap) -
-              1 +
-              'px',
-        transform: 'rotate(0deg)',
-        transformOrigin: 'left top',
-      };
-    }
+      left = icType.width - pinImg.width - 1;
+      top = icType.height / 2 -
+            icType.rightPins.length / 2 * (pinImg.height + icType.rightPinsPlaceConfig.gap) +
+            idx * (pinImg.height + icType.rightPinsPlaceConfig.gap) - 1;
+    } break;
 
     case 'left': {
-      return {
-        position: 'absolute',
-        width: pinImg.width + 'px',
-        height: pinImg.height + 'px',
-        left: icType.width - pinImg.width - 1 + 'px',
-        top:  pinImg.width + icType.rightPinsPlaceConfig.padding +
-              idx * (pinImg.height + icType.rightPinsPlaceConfig.gap) -
-              1 +
-              'px',
-        transform: 'rotate(0deg)',
-        transformOrigin: 'left top',
-      };
-    }
+      left = icType.width - pinImg.width - 1;
+      top = pinImg.width + icType.rightPinsPlaceConfig.padding +
+            idx * (pinImg.height + icType.rightPinsPlaceConfig.gap) - 1;
+    } break;
 
     case 'right': {
-      return {
-        position: 'absolute',
-        width: pinImg.width + 'px',
-        height: pinImg.height + 'px',
-        left: icType.width - pinImg.width - 1 + 'px',
-        top:  icType.height - pinImg.width - pinImg.height - icType.rightPinsPlaceConfig.padding -
-              (icType.rightPins.length - 1 - idx) * (pinImg.height + icType.rightPinsPlaceConfig.gap) -
-              1 +
-              'px',
-        transform: 'rotate(0deg)',
-        transformOrigin: 'left top',
-      };
-    }
+      left = icType.width - pinImg.width - 1;
+      top = icType.height - pinImg.width - pinImg.height - icType.rightPinsPlaceConfig.padding -
+            (icType.rightPins.length - 1 - idx) * (pinImg.height + icType.rightPinsPlaceConfig.gap) - 1;
+    } break;
   }
+
+  return {
+    position: 'absolute',
+    width: pinImg.width + 'px',
+    height: pinImg.height + 'px',
+    left: left + 'px',
+    top: top + 'px',
+    transform: 'rotate(0deg)',
+    transformOrigin: 'left top',
+  };
 }
 
-function getBottomPinStyle(pin: PinDefinition, idx: number) {
-  switch (icType.bottomPinsPlaceConfig.alignment) {
+function getRightPinAnchorStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+  let s = getRightPinStyle(ic, pin, idx)
+
+  return {
+    position: 'absolute',
+    width: '0px',
+    height: '0px',
+    left: parseInt(s.left) + pinImg.width + 'px',
+    top: parseInt(s.top) + pinImg.height / 2 + 'px',
+    opacity: '0',
+  };
+}
+
+function getBottomPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+  let left = 0;
+  let top = 0;
+
+  switch (icType.topPinsPlaceConfig.alignment) {
     case "center": {
-      return {
-        position: 'absolute',
-        width: pinImg.width + 'px',
-        height: pinImg.height + 'px',
-        left: icType.width / 2 -
-              icType.topPins.length / 2 * (pinImg.height + icType.bottomPinsPlaceConfig.gap) +
-              idx * (pinImg.height + icType.bottomPinsPlaceConfig.gap) -
-              1 +
-              'px',
-        top: icType.height - 1 + 'px',
-        transform: 'rotate(-90deg)',
-        transformOrigin: 'left top',
-      };
-    }
+      left = icType.width / 2 -
+             icType.topPins.length / 2 * (pinImg.height + icType.bottomPinsPlaceConfig.gap) +
+             idx * (pinImg.height + icType.bottomPinsPlaceConfig.gap) - 1;
+      top = icType.height - 1;
+    } break;
 
     case 'left': {
-      return {
-        position: 'absolute',
-        width: pinImg.width + 'px',
-        height: pinImg.height + 'px',
-        left: icType.width - pinImg.width - pinImg.height - icType.bottomPinsPlaceConfig.padding -
-              idx * (pinImg.height + icType.bottomPinsPlaceConfig.gap) -
-              1 +
-              'px',
-        top: icType.height - 1 + 'px',
-        transform: 'rotate(-90deg)',
-        transformOrigin: 'left top',
-      };
-    }
+      left = icType.width - pinImg.width - pinImg.height - icType.bottomPinsPlaceConfig.padding -
+              idx * (pinImg.height + icType.bottomPinsPlaceConfig.gap) - 1;
+      top = icType.height - 1;
+    } break;
 
     case 'right': {
-      return {
-        position: 'absolute',
-        width: pinImg.width + 'px',
-        height: pinImg.height + 'px',
-        left: pinImg.width + icType.bottomPinsPlaceConfig.padding +
-              idx * (pinImg.height + icType.bottomPinsPlaceConfig.gap) -
-              1 +
-              'px',
-        top: icType.height - 1 + 'px',
-        transform: 'rotate(-90deg)',
-        transformOrigin: 'left top',
-      };
-    }
+      left = pinImg.width + icType.bottomPinsPlaceConfig.padding +
+             idx * (pinImg.height + icType.bottomPinsPlaceConfig.gap) - 1;
+      top = icType.height - 1;
+    } break;
   }
+
+  return {
+    position: 'absolute',
+    width: pinImg.width + 'px',
+    height: pinImg.height + 'px',
+    left: left + 'px',
+    top: top + 'px',
+    transform: 'rotate(-90deg)',
+    transformOrigin: 'left top',
+  };
 }
 
-function getLeftPinStyle(pin: PinDefinition, idx: number) {
-  switch (icType.leftPinsPlaceConfig.alignment) {
+function getBottomPinAnchorStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+  let s = getBottomPinStyle(ic, pin, idx)
+
+  return {
+    position: 'absolute',
+    width: '0px',
+    height: '0px',
+    left: parseInt(s.left) + pinImg.height / 2 + 'px',
+    top: parseInt(s.top) + 'px',
+    opacity: '0',
+  };
+}
+
+function getLeftPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+  let left = 0;
+  let top = 0;
+
+  switch (icType.topPinsPlaceConfig.alignment) {
     case "center": {
-      return {
-        position: 'absolute',
-        width: pinImg.width + 'px',
-        height: pinImg.height + 'px',
-        left: 0 - 1 + 'px',
-        top:  icType.height / 2 +
-              icType.topPins.length / 2 * (pinImg.height + icType.leftPinsPlaceConfig.gap) -
-              (idx + 1) * (pinImg.height + icType.leftPinsPlaceConfig.gap) -
-              1 +
-              'px',
-        transform: 'rotate(0deg)',
-        transformOrigin: 'left top',
-      };
-    }
+      left = 0 - 1;
+      top = icType.height / 2 +
+            icType.topPins.length / 2 * (pinImg.height + icType.leftPinsPlaceConfig.gap) -
+            (idx + 1) * (pinImg.height + icType.leftPinsPlaceConfig.gap) - 1;
+    } break;
 
     case 'left': {
-      return {
-        position: 'absolute',
-        width: pinImg.width + 'px',
-        height: pinImg.height + 'px',
-        left: 0 - 1 + 'px',
-        top:  icType.height - pinImg.width - icType.leftPinsPlaceConfig.padding -
-              (idx + 1) * (pinImg.height + icType.leftPinsPlaceConfig.gap) -
-              1 +
-              'px',
-        transform: 'rotate(0deg)',
-        transformOrigin: 'left top',
-      };
-    }
+      left = 0 - 1;
+      top =  icType.height - pinImg.width - icType.leftPinsPlaceConfig.padding -
+             (idx + 1) * (pinImg.height + icType.leftPinsPlaceConfig.gap) - 1;
+    } break;
 
     case 'right': {
-      return {
-        position: 'absolute',
-        width: pinImg.width + 'px',
-        height: pinImg.height + 'px',
-        left: 0 - 1 + 'px',
-        top:  pinImg.width + icType.leftPinsPlaceConfig.padding +
-              (icType.rightPins.length - 1 - idx) * (pinImg.height + icType.leftPinsPlaceConfig.gap) -
-              1 +
-              'px',
-        transform: 'rotate(0deg)',
-        transformOrigin: 'left top',
-      };
-    }
+      left = 0 - 1;
+      top = pinImg.width + icType.leftPinsPlaceConfig.padding +
+           (icType.rightPins.length - 1 - idx) * (pinImg.height + icType.leftPinsPlaceConfig.gap) - 1;
+    } break;
   }
+
+  return {
+    position: 'absolute',
+    width: pinImg.width + 'px',
+    height: pinImg.height + 'px',
+    left: left + 'px',
+    top: top + 'px',
+    transform: 'rotate(0deg)',
+    transformOrigin: 'left top',
+  };
 }
+
+function getLeftPinAnchorStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+  let s = getLeftPinStyle(ic, pin, idx)
+
+  return {
+    position: 'absolute',
+    width: '0px',
+    height: '0px',
+    left: parseInt(s.left) + 'px',
+    top: parseInt(s.top) + pinImg.height / 2 + 'px',
+    opacity: '0',
+  };
+}
+
+onMounted(async () => {
+  let icType = props.ic.icType;
+
+  if (icType.display) {
+    watch(() => props.displayData, async (val) => {
+      console.log(`display data changed`);
+
+      if (icType.display) {
+        let pixelBuffer = new Uint8ClampedArray(icType.display.pixelWidth * icType.display.pixelHeight * 4);
+        for (let i = 0; i < pixelBuffer.length; i += 4) {
+          pixelBuffer[i] = val[i / 4] ? 255 : 0;     // R
+          pixelBuffer[i + 1] = 0;   // G
+          pixelBuffer[i + 2] = 0;   // B
+          pixelBuffer[i + 3] = 255; // A
+        }
+
+        // 1. 创建临时 canvas 绘制原始像素数据
+        const srcCanvas = new OffscreenCanvas(icType.display.pixelWidth, icType.display.pixelHeight);
+        const srcCtx = srcCanvas.getContext('2d');
+        if (!srcCtx) return;
+
+        const imageData = new ImageData(pixelBuffer, icType.display.pixelWidth, icType.display.pixelHeight);
+        srcCtx.putImageData(imageData, 0, 0);
+
+        // 2. 创建目标 canvas（280x140）并缩放绘制
+        const destCanvas = new OffscreenCanvas(icType.display.width, icType.display.height);
+        const destCtx = destCanvas.getContext('2d');
+        if (!destCtx) return;
+
+        // 关键：使用 drawImage 缩放
+        destCtx.drawImage(srcCanvas, 0, 0, icType.display.pixelWidth, icType.display.pixelHeight, 0, 0, icType.display.width, icType.display.height);
+
+        // 3. 转换为 Data URL 并赋值给 <img>
+        const blob = await destCanvas.convertToBlob({ type: 'image/png' });
+        displaySrc.value = URL.createObjectURL(blob);
+      }
+    });
+
+    let pixelBuffer = new Uint8ClampedArray(icType.display.pixelWidth * icType.display.pixelHeight * 4);
+    for (let i = 0; i < pixelBuffer.length; i += 4) {
+      pixelBuffer[i] = 255;     // R
+      pixelBuffer[i + 1] = 0;   // G
+      pixelBuffer[i + 2] = 0;   // B
+      pixelBuffer[i + 3] = 255; // A
+    }
+
+    // 1. 创建临时 canvas 绘制原始像素数据
+    const srcCanvas = new OffscreenCanvas(icType.display.pixelWidth, icType.display.pixelHeight);
+    const srcCtx = srcCanvas.getContext('2d');
+    if (!srcCtx) return;
+
+    const imageData = new ImageData(pixelBuffer, icType.display.pixelWidth, icType.display.pixelHeight);
+    srcCtx.putImageData(imageData, 0, 0);
+
+    // 2. 创建目标 canvas（280x140）并缩放绘制
+    const destCanvas = new OffscreenCanvas(icType.display.width, icType.display.height);
+    const destCtx = destCanvas.getContext('2d');
+    if (!destCtx) return;
+
+    // 关键：使用 drawImage 缩放
+    destCtx.drawImage(srcCanvas, 0, 0, icType.display.pixelWidth, icType.display.pixelHeight, 0, 0, icType.display.width, icType.display.height);
+
+    // 3. 转换为 Data URL 并赋值给 <img>
+    const blob = await destCanvas.convertToBlob({ type: 'image/png' });
+    displaySrc.value = URL.createObjectURL(blob);
+  }
+})
 
 </script>
 
@@ -330,80 +396,116 @@ function getLeftPinStyle(pin: PinDefinition, idx: number) {
   />
 
   <img
+    v-if="icType.type === 'Display'"
+    :src="displaySrc"
+    :style="getDisplayStyle()"
+  />
+
+  <img
     v-if="pinImgLoaded"
     v-for="(pin, idx) in icType.topPins"
+    :id="createPinImageId(ic, pin)"
     :src="getPinImage(pin)"
-    :style="getTopPinStyle(pin, idx)"
-    :hidden="pinsHiddenStatus[idx]"
+    :style="getTopPinStyle(ic, pin, idx)"
   >
     <div
       v-for="(pin, idx) in icType.topPins"
       class="pin-tag pin-img"
+      :id="createPinId(ic, pin)"
       :title="pin.tag"
-      :style="getTopPinStyle(pin, idx)"
-      :hidden="pinsHiddenStatus[idx]"
-      @click="handlePinClick(idx)"
+      :style="getTopPinStyle(ic, pin, idx)"
+      @click="handlePinClick(idx, pin, $event)"
     >
       {{ pin.tag }}
     </div>
+
+    <div
+      v-if="pinImgLoaded"
+      v-for="(pin, idx) in icType.topPins"
+      :id="createPinAnchorId(ic, pin)"
+      :style="getTopPinAnchorStyle(ic, pin, idx)"
+    />
   </img>
 
   <img
     v-if="pinImgLoaded"
     v-for="(pin, idx) in icType.rightPins"
+    :id="createPinImageId(ic, pin)"
     :src="getPinImage(pin)"
-    :style="getRightPinStyle(pin, idx)"
-    :hidden="pinsHiddenStatus[icType.topPins.length + idx]"
+    :style="getRightPinStyle(ic, pin, idx)"
   >
     <div
       v-if="pinImgLoaded"
       v-for="(pin, idx) in icType.rightPins"
       class="pin-tag pin-img"
+      :id="createPinId(ic, pin)"
       :title="pin.tag"
-      :style="getRightPinStyle(pin, idx)"
-      :hidden="pinsHiddenStatus[icType.topPins.length + idx]"
+      :style="getRightPinStyle(ic, pin, idx)"
+      @click="handlePinClick(icType.topPins.length + idx, pin, $event)"
     >
       {{ pin.tag }}
     </div>
+
+    <div
+      v-if="pinImgLoaded"
+      v-for="(pin, idx) in icType.rightPins"
+      :id="createPinAnchorId(ic, pin)"
+      :style="getRightPinAnchorStyle(ic, pin, idx)"
+    />
   </img>
 
   <img
     v-if="pinImgLoaded"
     v-for="(pin, idx) in icType.bottomPins"
+    :id="createPinImageId(ic, pin)"
     :src="getPinImage(pin)"
-    :style="getBottomPinStyle(pin, idx)"
-    :hidden="pinsHiddenStatus[icType.topPins.length + icType.rightPins.length + idx]"
+    :style="getBottomPinStyle(ic, pin, idx)"
   >
     <div
       v-if="pinImgLoaded"
       v-for="(pin, idx) in icType.bottomPins"
       class="pin-tag pin-img"
+      :id="createPinId(ic, pin)"
       :title="pin.tag"
-      :style="getBottomPinStyle(pin, idx)"
-      :hidden="pinsHiddenStatus[icType.topPins.length + icType.rightPins.length + idx]"
+      :style="getBottomPinStyle(ic, pin, idx)"
+      @click="handlePinClick(icType.topPins.length + icType.rightPins.length + idx, pin, $event)"
     >
       {{ pin.tag }}
     </div>
+
+    <div
+      v-if="pinImgLoaded"
+      v-for="(pin, idx) in icType.bottomPins"
+      :id="createPinAnchorId(ic, pin)"
+      :style="getBottomPinAnchorStyle(ic, pin, idx)"
+    />
   </img>
 
   <img
     v-if="pinImgLoaded"
     v-for="(pin, idx) in icType.leftPins"
+    :id="createPinImageId(ic, pin)"
     :src="getPinImage(pin)"
-    :style="getLeftPinStyle(pin, idx)"
-    :hidden="pinsHiddenStatus[icType.topPins.length + icType.rightPins.length + icType.bottomPins.length + idx]"
+    :style="getLeftPinStyle(ic, pin, idx)"
   >
     <div
       v-if="pinImgLoaded"
       v-for="(pin, idx) in icType.leftPins"
       class="pin-tag pin-img"
+      :id="createPinId(ic, pin)"
       :title="pin.tag"
-      :style="getLeftPinStyle(pin, idx)"
-      :hidden="pinsHiddenStatus[icType.topPins.length + icType.rightPins.length + icType.bottomPins.length + idx]"
-      @click="handlePinClick(icType.topPins.length + icType.rightPins.length + icType.bottomPins.length + idx)"
+      :style="getLeftPinStyle(ic, pin, idx)"
+      @click="handlePinClick(icType.topPins.length + icType.rightPins.length + icType.bottomPins.length + idx, pin, $event)"
     >
       {{ pin.tag }}
     </div>
+
+    <div
+      v-if="pinImgLoaded"
+      v-for="(pin, idx) in icType.leftPins"
+      :id="createPinAnchorId(ic, pin)"
+      :style="getLeftPinAnchorStyle(ic, pin, idx)"
+    />
   </img>
 
   </div>

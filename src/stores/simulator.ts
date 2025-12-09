@@ -1,6 +1,14 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { type SimulatorState, type ICType, type ICInstance, type Connection, PinType } from '@/types/simulator.d.ts';
+import { type SimulatorState, type ICType, type ICInstance, type Connection, PinType, type PinDefinition } from '@/types/simulator.d.ts';
+
+function generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
 
 export const useSimulatorStore = defineStore('simulator', () => {
   // 状态
@@ -28,8 +36,11 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
   let icTypes: ICType[] = [
     {
+      type: "MCU",
       id: 'STM32F405RGTx',
       name: 'STM32F405RGTx',
+      qemuDeviceType: "vee-stm32f405",
+      qemuDeviceId: "",
       category: 'Logic',
       width: 348 + 38 + 38,
       height: 348 + 38 + 38,
@@ -75,7 +86,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
       rightPins: [
         { tag: "VDD", type: "power" },
         { tag: "VCAP_2", type: "power" },
-        { tag: "PA13", type: "gpio", chipId: 0, num: 13 },
+        { tag: "PA13", type: "gpio",  chipId: 0, num: 13 },
         { tag: "PA12", type: "gpio", chipId: 0, num: 12 },
         { tag: "PA11", type: "gpio", chipId: 0, num: 11 },
         { tag: "PA10", type: "gpio", chipId: 0, num: 10 },
@@ -126,6 +137,85 @@ export const useSimulatorStore = defineStore('simulator', () => {
         { tag: "PC13", type: "gpio", chipId: 2, num: 13 },
         { tag: "VBAT", type: "power" },
       ],
+      getPinPathInQemuQom(qomId, pin, interfaces, interfacesQomId) {
+        if (pin.chipId) {
+          return `/machine/soc/GPIO${pin.tag.substring(1, 2)}/pin${pin.tag.substring(2)}`;
+        }
+        return ``;
+      },
+    },
+    {
+      type: "Display",
+      id: 'SSD1306',
+      name: 'SSD1306',
+      qemuDeviceType: "vee-ssd1306",
+      qemuDeviceId: "vee-display",
+      category: 'Display',
+      width: 300 + 38 + 38,
+      height: 216 + 38 + 38,
+      image: '/src/assets/SSD1306.png',
+      topPinsPlaceConfig: {
+        alignment: "center",
+        gap: 0,
+        padding: 0,
+      },
+      rightPinsPlaceConfig: {
+        alignment: "center",
+        gap: 0,
+        padding: 0,
+      },
+      bottomPinsPlaceConfig: {
+        alignment: "center",
+        gap: 0,
+        padding: 0,
+      },
+      leftPinsPlaceConfig: {
+        alignment: "center",
+        gap: 0,
+        padding: 0,
+      },
+      topPins: [
+      ],
+      rightPins: [
+      ],
+      bottomPins: [
+        { tag: "RST", type: "gpio", chipId: 0, num: 0 },
+        { tag: "CS", type: "gpio", chipId: 0, num: 1 },
+        { tag: "MOSI", type: "gpio", chipId: 0, num: 2 },
+        { tag: "DC", type: "gpio", chipId: 0, num: 3 },
+        { tag: "SCK", type: "gpio", chipId: 0, num: 4 },
+      ],
+      leftPins: [
+      ],
+
+      getPinPathInQemuQom(qomId, pin, interfaces, interfacesQomId) {
+        switch (pin.tag) {
+        case "RST":   return `/machine/peripheral/${qomId}/pin-rst`;
+        case "CS":    return `/machine/peripheral/${interfacesQomId[0]}/pin-cs`;
+        case "MOSI":  return `/machine/peripheral/${interfacesQomId[0]}/pin-mosi`;
+        case "DC":    return `/machine/peripheral/${qomId}/pin-dc`;
+        case "SCK":   return `/machine/peripheral/${interfacesQomId[0]}/pin-sck`;
+        }
+        return ``;
+      },
+
+      communicationInterfaces: [
+        {
+          type: "vee-spi",
+          getPathInQemuQom(qomId) {
+            return `/machine/peripheral/${qomId}`;
+          },
+        }
+      ],
+
+      display: {
+        left: 8 + 38,
+        top: 18 + 38,
+        width: 280,
+        height: 140,
+        pixelWidth: 128,
+        pixelHeight: 64,
+      },
     },
   ];
 
@@ -135,6 +225,16 @@ export const useSimulatorStore = defineStore('simulator', () => {
     connections: [],
     selectedElement: { type: null, id: null },
   });
+
+  function reset()
+  {
+    state.value = {
+      icTypes,
+      placedICs: [],
+      connections: [],
+      selectedElement: { type: null, id: null },
+    };
+  }
 
   // Getters
   const icCategories = computed(() => {
@@ -157,13 +257,14 @@ export const useSimulatorStore = defineStore('simulator', () => {
     if (!icType) return;
 
     const newIC: ICInstance = {
-      id: `ic-${Date.now()}`,
+      id: `ic-${generateUUID()}`,
       typeId,
       x,
       y,
       rotation: 0,
       icType: icType,
-      properties: {}
+      properties: {},
+      communicationInterfaces: [],
     };
 
     state.value.placedICs.push(newIC);
@@ -175,16 +276,18 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
   function createConnection(from: { icId: string; pinId: string }, to: { icId: string; pinId: string }) {
     const newConnection: Connection = {
-      id: `conn-${Date.now()}`,
+      id: `conn-${generateUUID()}`,
       from,
       to
     };
 
     state.value.connections.push(newConnection);
-    selectElement('connection', newConnection.id);
+    // selectElement('connection', newConnection.id);
   }
 
   function selectElement(type: 'ic' | 'connection' | null, id: string | null) {
+    console.log(`selectElement(${type}, ${id})`);
+
     state.value.selectedElement = { type, id };
   }
 
@@ -209,13 +312,54 @@ export const useSimulatorStore = defineStore('simulator', () => {
     selectElement(null, null);
   }
 
+  function createPinImageId(ic: ICInstance, pin: PinDefinition) {
+    return `${ic.id}.${pin.tag}.image`;
+  }
+
+  function createPinId(ic: ICInstance, pin: PinDefinition) {
+    return `${pin.tag}`;
+  }
+
+  function createPinAnchorId(ic: ICInstance, pin: PinDefinition) {
+    return `${ic.id}.${pin.tag}.anchor`;
+  }
+
+  function getPinDefinitionFromTag(ic: ICInstance, tag: string) {
+    for (let i in ic.icType.topPins) {
+      if (ic.icType.topPins[i].tag === tag) {
+          return ic.icType.topPins[i];
+      }
+    }
+    for (let i in ic.icType.rightPins) {
+      if (ic.icType.rightPins[i].tag === tag) {
+          return ic.icType.rightPins[i];
+      }
+    }
+    for (let i in ic.icType.bottomPins) {
+      if (ic.icType.bottomPins[i].tag === tag) {
+          return ic.icType.bottomPins[i];
+      }
+    }
+    for (let i in ic.icType.leftPins) {
+      if (ic.icType.leftPins[i].tag === tag) {
+          return ic.icType.leftPins[i];
+      }
+    }
+    return null;
+  }
+
   return {
     state,
+    reset,
     icCategories,
     selectedIC,
     addIC,
     createConnection,
     selectElement,
-    deleteSelected
+    deleteSelected,
+    createPinImageId,
+    createPinId,
+    createPinAnchorId,
+    getPinDefinitionFromTag,
   };
 });
