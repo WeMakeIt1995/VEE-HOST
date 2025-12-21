@@ -1,12 +1,13 @@
 <script setup lang="ts">
+
 import { computed, inject } from 'vue';
-import type { SimulatorStore } from '@/stores/simulator';
+import type { useSimulatorStore } from '@/stores/simulator';
 
 const props = defineProps<{
   searchQuery: string;
 }>();
 
-const simulatorStore = inject<SimulatorStore>('simulatorStore')!;
+const simulatorStore = inject<ReturnType<typeof useSimulatorStore>>('simulatorStore')!;
 
 const filteredICTypes = computed(() => {
   if (!props.searchQuery) return simulatorStore.icCategories;

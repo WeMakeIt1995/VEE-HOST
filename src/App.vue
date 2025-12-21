@@ -7,6 +7,12 @@ import PropertyPanel from '@/components/simulator/PropertyPanel.vue';
 
 const simulatorStore = useSimulatorStore();
 const searchQuery = ref('');
+const serialContent = ref('');
+
+function handleSerialOut(val: string, append: boolean)
+{
+  append ? serialContent.value += val : serialContent.value = val;
+}
 
 // 提供store给所有子组件
 provide('simulatorStore', simulatorStore);
@@ -15,8 +21,8 @@ provide('simulatorStore', simulatorStore);
 <template>
   <div class="simulator-container">
     <ICLibraryPanel class="library-panel" :search-query="searchQuery" />
-    <DesignCanvas class="design-canvas" />
-    <PropertyPanel class="property-panel" />
+    <DesignCanvas class="design-canvas" @serial-out="handleSerialOut" />
+    <PropertyPanel class="property-panel" :serial-content="serialContent" />
   </div>
 </template>
 
@@ -24,7 +30,7 @@ provide('simulatorStore', simulatorStore);
 .simulator-container {
   display: flex;
   height: 92vh;
-  width: 92vw;
+  width: 98vw;
 }
 
 .library-panel {

@@ -4,10 +4,11 @@ console.info(`make IC`);
 
 import { computed, inject, ref, reactive, watch } from 'vue';
 import type { ICInstance, ICType, PinDefinition } from '@/types/simulator';
-import type { SimulatorStore } from '@/stores/simulator';
+import type { useSimulatorStore } from '@/stores/simulator';
 import { transform } from 'typescript';
-import type { ComputedRef } from 'vue';
+import type { ComputedRef, StyleValue } from 'vue';
 import { onMounted } from 'vue';
+import * as utility from '@/stores/utility';
 
 const mainImageLeft = ref(0);
 const mainImageTop = ref(0);
@@ -31,7 +32,7 @@ const emit = defineEmits<{
 
 const displaySrc = ref<string>("");
 
-const simulatorStore = inject<SimulatorStore>('simulatorStore')!;
+const simulatorStore = inject<ReturnType<typeof useSimulatorStore>>('simulatorStore')!;
 
 // const icType: ComputedRef<ICType> = computed(() => {
 //   return simulatorStore.state.icTypes.find(t => t.id === props.ic.typeId);
@@ -65,14 +66,14 @@ function handlePinClick(idx: number, pin: PinDefinition, event: MouseEvent) {
 
 function getPinImage(pin: PinDefinition) {
   switch(pin.type) {
-    case 'power':   return "src/assets/pale-pin.png";
-    case 'utility': return "src/assets/chartreuse-pin.png";
-    case 'gpio':    return "src/assets/gray-pin.png";
+    case 'power':   return utility.getSourcePath("/pale-pin.png");
+    case 'utility': return utility.getSourcePath("/chartreuse-pin.png");
+    case 'gpio':    return utility.getSourcePath("/gray-pin.png");
   }
 }
 
 const pinImg = new Image();
-pinImg.src = "src/assets/blue-pin.png";
+pinImg.src = utility.getSourcePath("/blue-pin.png");
 
 pinImg.onload = () => {
   console.log(`load pin image ok`);
@@ -94,7 +95,7 @@ pinImg.onerror = (error) => {
   console.log(`load pin image faild`);
 };
 
-function getDisplayStyle() {
+function getDisplayStyle() : StyleValue {
   return {
     position: 'absolute',
     width: props.ic.icType.display?.width + 'px',
@@ -104,7 +105,7 @@ function getDisplayStyle() {
   }
 }
 
-function getTopPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+function getTopPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) : StyleValue {
   let left = 0;
   let top = 0;
 
@@ -140,20 +141,20 @@ function getTopPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
   };
 }
 
-function getTopPinAnchorStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+function getTopPinAnchorStyle(ic: ICInstance, pin: PinDefinition, idx: number) : StyleValue {
   let s = getTopPinStyle(ic, pin, idx)
 
   return {
     position: 'absolute',
     width: '0px',
     height: '0px',
-    left: parseInt(s.left) + pinImg.height / 2 + 'px',
-    top: parseInt(s.top) - pinImg.width + 'px',
+    left: parseInt((s as any).left) + pinImg.height / 2 + 'px',
+    top: parseInt((s as any).top) - pinImg.width + 'px',
     opacity: '0',
   };
 }
 
-function getRightPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+function getRightPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) : StyleValue {
   let left = 0;
   let top = 0;
 
@@ -189,20 +190,20 @@ function getRightPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
   };
 }
 
-function getRightPinAnchorStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+function getRightPinAnchorStyle(ic: ICInstance, pin: PinDefinition, idx: number) : StyleValue {
   let s = getRightPinStyle(ic, pin, idx)
 
   return {
     position: 'absolute',
     width: '0px',
     height: '0px',
-    left: parseInt(s.left) + pinImg.width + 'px',
-    top: parseInt(s.top) + pinImg.height / 2 + 'px',
+    left: parseInt((s as any).left) + pinImg.width + 'px',
+    top: parseInt((s as any).top) + pinImg.height / 2 + 'px',
     opacity: '0',
   };
 }
 
-function getBottomPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+function getBottomPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) : StyleValue {
   let left = 0;
   let top = 0;
 
@@ -238,20 +239,20 @@ function getBottomPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
   };
 }
 
-function getBottomPinAnchorStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+function getBottomPinAnchorStyle(ic: ICInstance, pin: PinDefinition, idx: number) : StyleValue {
   let s = getBottomPinStyle(ic, pin, idx)
 
   return {
     position: 'absolute',
     width: '0px',
     height: '0px',
-    left: parseInt(s.left) + pinImg.height / 2 + 'px',
-    top: parseInt(s.top) + 'px',
+    left: parseInt((s as any).left) + pinImg.height / 2 + 'px',
+    top: parseInt((s as any).top) + 'px',
     opacity: '0',
   };
 }
 
-function getLeftPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+function getLeftPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) : StyleValue {
   let left = 0;
   let top = 0;
 
@@ -287,15 +288,15 @@ function getLeftPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
   };
 }
 
-function getLeftPinAnchorStyle(ic: ICInstance, pin: PinDefinition, idx: number) {
+function getLeftPinAnchorStyle(ic: ICInstance, pin: PinDefinition, idx: number) : StyleValue {
   let s = getLeftPinStyle(ic, pin, idx)
 
   return {
     position: 'absolute',
     width: '0px',
     height: '0px',
-    left: parseInt(s.left) + 'px',
-    top: parseInt(s.top) + pinImg.height / 2 + 'px',
+    left: parseInt((s as any).left) + 'px',
+    top: parseInt((s as any).top) + pinImg.height / 2 + 'px',
     opacity: '0',
   };
 }

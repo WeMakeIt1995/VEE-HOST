@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { type SimulatorState, type ICType, type ICInstance, type Connection, PinType, type PinDefinition } from '@/types/simulator.d.ts';
+import { type SimulatorState, type ICType, type ICInstance, type Connection, PinType, type PinDefinition } from '@/types/simulator';
+import * as utility from '@/stores/utility';
 
 function generateUUID() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -44,7 +45,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
       category: 'Logic',
       width: 348 + 38 + 38,
       height: 348 + 38 + 38,
-      image: '/src/assets/STM32F405RGTx.png',
+      image: utility.getSourcePath('/STM32F405RGTx.png'),
       topPinsPlaceConfig: {
         alignment: "center",
         gap: 0,
@@ -153,7 +154,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
       category: 'Display',
       width: 300 + 38 + 38,
       height: 216 + 38 + 38,
-      image: '/src/assets/SSD1306.png',
+      image: utility.getSourcePath('/SSD1306.png'),
       topPinsPlaceConfig: {
         alignment: "center",
         gap: 0,

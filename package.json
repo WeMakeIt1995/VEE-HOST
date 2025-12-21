@@ -22,6 +22,18 @@
     "electron:build": "npm run build && electron-builder",
     "postinstall": "electron-builder install-app-deps"
   },
+  "build": {
+    "directories": {
+      "output": "dist_electron"
+    },
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "dist",
+        "to": "dist"
+      }
+    ]
+  },
   "dependencies": {
     "@vue/compiler-sfc": "^3.5.24",
     "element-plus": "^2.9.11",

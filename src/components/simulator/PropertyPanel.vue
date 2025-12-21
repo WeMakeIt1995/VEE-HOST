@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { computed, inject } from 'vue';
-import type { SimulatorStore } from '@/stores/simulator';
 
-const simulatorStore = inject<SimulatorStore>('simulatorStore')!;
+import { computed, inject, onMounted, ref, watch } from 'vue';
+import type { useSimulatorStore } from '@/stores/simulator';
+
+const g_serialContent = ref('');
+
+const props = defineProps<{
+  serialContent: string;
+}>();
+
+const simulatorStore = inject<ReturnType<typeof useSimulatorStore>>('simulatorStore')!;
 
 const selectedConnection = computed(() => {
   if (simulatorStore.state.selectedElement.type !== 'connection') return null;
@@ -27,6 +34,15 @@ function updateICProperty(key: string, value: any) {
     ic.properties = { ...ic.properties, [key]: value };
   }
 }
+
+onMounted(() => {
+  watch(() => props.serialContent, async (val) => {
+    console.log(`display data changed`);
+
+    g_serialContent.value = val;
+  });
+});
+
 </script>
 
 <template>
@@ -66,7 +82,7 @@ function updateICProperty(key: string, value: any) {
         <span>{{ simulatorStore.selectedIC.rotation }}°</span>
       </div>
 
-      <div
+      <!-- <div
         v-for="pin in selectedICType?.pins"
         :key="pin.id"
         class="property-group"
@@ -78,7 +94,7 @@ function updateICProperty(key: string, value: any) {
           @input="updateICProperty(pin.id, $event.target.value)"
           :placeholder="`${pin.name} 属性`"
         />
-      </div>
+      </div> -->
 
       <button
         class="delete-button"
@@ -105,6 +121,17 @@ function updateICProperty(key: string, value: any) {
       <p>未选择任何元素</p>
       <p>点击画布上的组件或连线以编辑其属性</p>
     </div>
+
+    <div
+      class="serial-out"
+    >
+      <p>虚拟串口输出</p>
+      <textarea
+        v-model="g_serialContent"
+        readonly
+        class="serial-textarea"
+      ></textarea>
+    </div>
   </div>
 </template>
 
@@ -112,7 +139,9 @@ function updateICProperty(key: string, value: any) {
 .property-panel {
   height: 100%;
   padding: 15px;
-  overflow-y: auto;
+  /* overflow-y: auto; */
+  display: flex;
+  flex-direction: column;
   background: #fff;
 }
 
@@ -176,4 +205,17 @@ function updateICProperty(key: string, value: any) {
   text-align: center;
   padding-top: 50px;
 }
+
+.serial-out {
+  height: 50%;
+  margin-top: auto;
+  background: #f9f9f9;
+}
+
+.serial-textarea {
+  background: white;
+  width: 100%;
+  height: 98%;
+}
+
 </style>

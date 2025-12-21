@@ -21,9 +21,9 @@ export interface PinsPlaceConfig {
   padding: number;
 };
 
-interface CommunicationInterface {
+export interface CommunicationInterface {
   type: "vee-spi",
-  getPathInQemuQom: (qomId) => string,
+  getPathInQemuQom: (qomId: any) => string,
 }
 
 export interface ICType {
@@ -65,14 +65,14 @@ export enum PinType {
   Gpio,
 };
 
-interface PinDefinition {
+export interface PinDefinition {
   tag: string;
   type: "power" | "utility" | "gpio";
   chipId?: number;
   num?: number;
 }
 
-interface ICInstance {
+export interface ICInstance {
   id: string;
   typeId: string;
   x: number;
@@ -83,13 +83,13 @@ interface ICInstance {
   communicationInterfaces: string[],
 }
 
-interface Connection {
+export interface Connection {
   id: string;
   from: { icId: string; pinId: string };
   to: { icId: string; pinId: string };
 }
 
-interface SimulatorState {
+export interface SimulatorState {
   icTypes: ICType[];
   placedICs: ICInstance[];
   connections: Connection[];

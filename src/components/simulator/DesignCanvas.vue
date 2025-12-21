@@ -1,13 +1,14 @@
 <script setup lang="ts">
+
 import { ref, inject, onMounted, computed } from 'vue';
 import GridBackground from './GridBackground.vue';
 import ICComponent from './ICComponent.vue';
 import Connection from './Connection.vue';
-import type { SimulatorStore, useSimulatorStore } from '@/stores/simulator';
+import type { useSimulatorStore } from '@/stores/simulator';
 import { jsPlumb, jsPlumbInstance, type Endpoint } from 'jsplumb';
-import type { CommunicationInterface, ICInstance, PinDefinition } from '@/types/simulator';
+import type { CommunicationInterface, ICInstance, PinDefinition } from '../../types/simulator';
 
-const simulatorStore: ReturnType<typeof useSimulatorStore> = inject<SimulatorStore>('simulatorStore')!;
+const simulatorStore = inject<ReturnType<typeof useSimulatorStore>>('simulatorStore')!;
 
 const canvasRef = ref<HTMLElement | null>(null);
 const activePin = ref<{ icId: string; pinImgId: string, pinId: string, pinAnchorId: string } | null>(null);
@@ -20,15 +21,29 @@ const viewport = ref({
 let g_plumb: jsPlumbInstance | null = null;
 let g_executable = ref('');
 let g_displayData = ref([]);
+let g_executableDebug = ref(false);
+
 const StartSimulator = '开始仿真';
 const LaunchSimulator = '仿真启动中';
 const StopSimulator = '停止仿真';
+const EnableExecutableDebug = '打开调试模式';
+const DisableExecutableDebug = '关闭调试模式';
+
+const MachineControlServerUrl = 'ws://localhost:4445';
+const MachineQmpServerUrl = 'ws://localhost:4446';
+const MachineSerialServerUrl = 'ws://localhost:4447';
+
 let g_startSimulatorButtonText = ref(StartSimulator);
 let g_startSimulatorButtonDisabled = ref(false);
 let g_blueprintModifyDisabled = ref(false);
 
 let g_machineControlClient: WebSocket | null = null;
 let g_machineMessageClient: WebSocket | null = null;
+let g_machineSerialClient: WebSocket | null = null;
+
+const emit = defineEmits<{
+  (e: 'serialOut', val: string, append: boolean): void;
+}>();
 
 function clearAll()
 {
@@ -48,7 +63,7 @@ function loadExample()
     console.log(simulatorStore.state);
 
     function connectPin(ic1: ICInstance, pin1: string, ic2: ICInstance, pin2: string) {
-      let srcPin = simulatorStore.getPinDefinitionFromTag(ic1, pin1);
+      let srcPin = simulatorStore.getPinDefinitionFromTag(ic1, pin1)!;
       handlePinClick(
         ic1.id,
         simulatorStore.createPinImageId(ic1, srcPin),
@@ -56,7 +71,7 @@ function loadExample()
         simulatorStore.createPinAnchorId(ic1, srcPin)
       );
 
-      let desPin = simulatorStore.getPinDefinitionFromTag(ic2, pin2);
+      let desPin = simulatorStore.getPinDefinitionFromTag(ic2, pin2)!;
       handlePinClick(
         ic2.id,
         simulatorStore.createPinImageId(ic2, desPin),
@@ -77,8 +92,10 @@ function stopSimulator()
 {
   g_machineControlClient?.close();
   g_machineMessageClient?.close();
+  g_machineSerialClient?.close();
   g_machineControlClient = null;
   g_machineMessageClient = null;
+  g_machineSerialClient = null;
   g_startSimulatorButtonText.value = StartSimulator;
   g_startSimulatorButtonDisabled.value = false;
   g_blueprintModifyDisabled.value = false;
@@ -126,6 +143,10 @@ function startSimulator()
       console.info(`make device qomId: ${qomId}`);
       interfaceDevices[qomId] = vv;
 
+      if (v.communicationInterfaces.length) {
+        return;
+      }
+
       v.communicationInterfaces.push(qomId);
     });
   });
@@ -156,6 +177,8 @@ function startSimulator()
 
     let p = `-device ${devices[i].icType.qemuDeviceType},id=${i}`;
     devices[i].communicationInterfaces.forEach((v) => {
+      // console.info(`make communicationInterfaces: device=${i},type=${interfaceDevices[v].type},v=${v}`);
+
       p += `,${interfaceDevices[v].type}=${v}`;
     });
 
@@ -184,14 +207,14 @@ function startSimulator()
 
     let fromPin = fromIc?.icType.getPinPathInQemuQom(
       fromIcQomId,
-      simulatorStore.getPinDefinitionFromTag(fromIc, v.from.pinId),
-      fromIc.icType.communicationInterfaces,
+      simulatorStore.getPinDefinitionFromTag(fromIc, v.from.pinId)!,
+      fromIc.icType.communicationInterfaces!,
       fromIc.communicationInterfaces
     );
     let toPin = toIc?.icType.getPinPathInQemuQom(
       toIcQomId,
-      simulatorStore.getPinDefinitionFromTag(toIc, v.to.pinId),
-      toIc.icType.communicationInterfaces,
+      simulatorStore.getPinDefinitionFromTag(toIc, v.to.pinId)!,
+      toIc.icType.communicationInterfaces!,
       toIc.communicationInterfaces
     );
     let p = `-device vee-line,id=${qomId},vee-pins-path='${fromPin},,${toPin}'`;
@@ -202,13 +225,14 @@ function startSimulator()
   });
 
   console.log(parameters);
+  console.log(devicesStr);
 
   (async () => {
     g_startSimulatorButtonText.value = LaunchSimulator;
     g_startSimulatorButtonDisabled.value = true;
     g_blueprintModifyDisabled.value = true;
 
-    g_machineControlClient = new WebSocket(`ws://localhost:4445`);
+    g_machineControlClient = new WebSocket(MachineControlServerUrl);
     g_machineControlClient.onopen = async (ev) => {
       g_machineControlClient?.send(JSON.stringify({
         command: 'launch-arm',
@@ -216,12 +240,43 @@ function startSimulator()
           model: 'vee-stm32f405',
           kernel: g_executable.value,
           devices: devicesStr,
+          debug: g_executableDebug.value,
         },
       }));
 
-      await new Promise((res) => { setTimeout(res, 4000); });
+      async function waitMachine(timeout: number)
+      {
+        return new Promise((res, rej) => {
+          g_machineControlClient!.onmessage = (ev) => {
 
-      g_machineMessageClient = new WebSocket(`ws://localhost:4446`);
+            let o = JSON.parse(ev.data);
+
+            if (o.machineState) {
+              switch (o.machineState) {
+              case 'Error': rej(false); break;
+              case 'Terminated': rej(false); break;
+              case 'Booting': break;
+              case 'Running': res(true); break;
+              }
+            }
+          };
+
+          setTimeout(() => {
+            rej(false);
+          }, timeout)
+        });
+      }
+
+      try {
+        await waitMachine(g_executableDebug.value ? 60e3 : 6e3);
+      }
+      catch {
+        stopSimulator();
+
+        return;
+      }
+
+      g_machineMessageClient = new WebSocket(MachineQmpServerUrl);
 
       let timer = setInterval(() => {
         if (g_machineMessageClient) {
@@ -249,10 +304,8 @@ function startSimulator()
 
         let o = JSON.parse(ev.data);
 
-        if (o["return"]) {
-          if (o["return"]["pixel"]) {
-            g_displayData.value = o["return"]["pixel"];
-          }
+        if (o["return"] && o["return"]["pixel"]) {
+          g_displayData.value = o["return"]["pixel"];
         }
       };
 
@@ -270,6 +323,27 @@ function startSimulator()
         clearInterval(timer);
         stopSimulator();
       };
+
+      // ########################################################
+
+      g_machineSerialClient = new WebSocket(MachineSerialServerUrl);
+
+      g_machineSerialClient.onopen = async (ev) => {
+        emit('serialOut', '', false);
+      };
+
+      g_machineSerialClient.onmessage = (ev) => {
+        // console.info(`machine serial data: `, ev.data);
+
+        emit('serialOut', ev.data, true);
+      };
+
+      g_machineSerialClient.onerror = (ev) => {
+
+      };
+      g_machineSerialClient.onclose = (ev) => {
+
+      };
     };
 
     g_machineControlClient.onerror = (ev) => {
@@ -280,10 +354,15 @@ function startSimulator()
   })();
 }
 
+function onClickDebugButton()
+{
+  g_executableDebug.value = ! g_executableDebug.value;
+}
+
 async function onClickSetExecutablePath()
 {
   try {
-    const filePath = await window.electronAPI.selectFile([".elf"]);
+    const filePath = await (window as any).electronAPI.selectFile([".elf"]);
     console.log(`select file: ${filePath}`);
 
     if (filePath) {
@@ -417,6 +496,10 @@ onMounted(() => {
       @click.stop="startSimulator()"
       :disabled="g_startSimulatorButtonDisabled"
     >{{ g_startSimulatorButtonText }}</button>
+
+    <button
+      @click.stop="onClickDebugButton()"
+    >{{ g_executableDebug ? DisableExecutableDebug : EnableExecutableDebug }}</button>
 
     <button
       @click.stop="onClickSetExecutablePath()"

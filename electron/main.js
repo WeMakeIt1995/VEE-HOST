@@ -30,10 +30,14 @@ function createWindow() {
     show: false // 先隐藏，加载完成后再显示
   })
 
+  // mainWindow.webContents.openDevTools()
+
   // 加载应用
   const startUrl = isDev
     ? 'http://localhost:5173'
-    : `file://${path.join(__dirname, '../dist/index.html')}`
+    : `file://${path.join(__dirname, '../../dist/index.html')}`
+
+  console.info(`isDev=${isDev}, startUrl=${startUrl}`)
 
   mainWindow.loadURL(startUrl)
 
