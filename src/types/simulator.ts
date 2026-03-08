@@ -45,18 +45,16 @@ export interface ICType {
   height: number;
   image: string;
 
+  stateFrame?: number;
+  stateAreaRect?: { x: number, y: number, width: number, height: number };
+  getStateCommand?: (qomId: string) => string;
+  getInitStateHtml?: () => string;
+  onStateUpdateStateHtml?: (result: any, type: ICType) => Promise<string>;
+  onStateUpdateImage?: (result: any, type: ICType) => string;
+
   getPinPathInQemuQom: (qomId: string, pin: PinDefinition, interfaces: CommunicationInterface[], interfacesQomId: string[]) => string;
 
   communicationInterfaces?: CommunicationInterface[];
-
-  display?: {
-    left: number,
-    top: number,
-    width: number,
-    height: number,
-    pixelWidth: number,
-    pixelHeight: number,
-  };
 }
 
 export enum PinType {
@@ -78,23 +76,37 @@ export interface ICInstance {
   x: number;
   y: number;
   rotation: number;
+  label: string,
   icType: ICType;
   properties: Record<string, any>;
-  communicationInterfaces: string[],
+  communicationInterfaces: string[];
+  pinIdTable: Set<string>;
+}
+
+export interface ConnectionPoint {
+  icId: string;
+  pinId: string;
+  isLinkPoint: boolean;
 }
 
 export interface Connection {
   id: string;
-  from: { icId: string; pinId: string };
-  to: { icId: string; pinId: string };
+  from: ConnectionPoint;
+  to: ConnectionPoint;
+  vertices: {x: number, y: number}[];
 }
+
+export type ConnectionSegments = Connection[]
 
 export interface SimulatorState {
   icTypes: ICType[];
   placedICs: ICInstance[];
-  connections: Connection[];
+  connections: ConnectionSegments[];
   selectedElement: {
-    type: 'ic' | 'connection' | null;
+    type: 'connection' | 'ic' | 'pin' | null;
     id: string | null;
   };
+  activePin: string,
+  serialOpen: boolean,
+  serialOut: string,
 }

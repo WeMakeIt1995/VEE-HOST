@@ -4,6 +4,12 @@ import { computed, inject, onMounted, ref, watch } from 'vue';
 import type { useSimulatorStore } from '@/stores/simulator';
 
 const g_serialContent = ref('');
+const g_serialWriteContent = ref('');
+const g_serialWriteSelect = ref('');
+const g_serialWriteHex = ref(false);
+const g_serialWriteHistory = ref<string[]>([]);
+const g_labelSetContent = ref('');
+const g_icId = ref('');
 
 const props = defineProps<{
   serialContent: string;
@@ -25,21 +31,39 @@ const selectedICType = computed(() => {
   );
 });
 
-function updateICProperty(key: string, value: any) {
-  if (!simulatorStore.selectedIC) return;
-  const ic = simulatorStore.state.placedICs.find(
-    ic => ic.id === simulatorStore.selectedIC?.id
-  );
-  if (ic) {
-    ic.properties = { ...ic.properties, [key]: value };
+function serialWrite() {
+  if (g_serialWriteHistory.value.indexOf(g_serialWriteContent.value) < 0) {
+    g_serialWriteHistory.value.push(g_serialWriteContent.value);
   }
+  simulatorStore.serialWrite(g_serialWriteContent.value, g_serialWriteHex.value);
+}
+
+function handleWriteSelectClick() {
+  // @ts-ignore
+  g_serialWriteContent.value = g_serialWriteSelect.value;
+}
+
+function onRotationChange(degree: number) {
+  simulatorStore.selectRotation(degree);
+}
+
+function updateIcProperty() {
+  simulatorStore.setIcLabel(g_labelSetContent.value);
 }
 
 onMounted(() => {
-  watch(() => props.serialContent, async (val) => {
-    console.log(`display data changed`);
+  watch(() => simulatorStore.state.selectedElement, (val) => {
+    g_icId.value = `${val.id}`;
+  });
 
-    g_serialContent.value = val;
+  watch(() => simulatorStore.state.serialOut, (val) => {
+    g_serialContent.value += val;
+  });
+
+  watch(() => simulatorStore.state.serialOpen, (val) => {
+    if (val) {
+      g_serialContent.value = '';
+    }
   });
 });
 
@@ -49,72 +73,36 @@ onMounted(() => {
   <div class="property-panel">
     <div v-if="simulatorStore.selectedIC" class="ic-properties">
       <h3>{{ selectedICType?.name }} 属性</h3>
+      <h3>{{ g_icId }}</h3>
 
       <div class="property-group">
-        <label>位置</label>
-        <div class="position-controls">
-          <div class="position-input">
-            <span>X:</span>
-            <input
-              type="number"
-              v-model.number="simulatorStore.selectedIC.x"
-            />
-          </div>
-          <div class="position-input">
-            <span>Y:</span>
-            <input
-              type="number"
-              v-model.number="simulatorStore.selectedIC.y"
-            />
-          </div>
-        </div>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="onRotationChange(-90)"
+        >
+          左转90°
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="onRotationChange(90)"
+        >
+          右转90°
+        </button>
       </div>
 
       <div class="property-group">
-        <label>旋转</label>
+        <p>设置标签</p>
         <input
-          type="range"
-          min="0"
-          max="360"
-          step="1"
-          v-model.number="simulatorStore.selectedIC.rotation"
+          v-model="g_labelSetContent"
         />
-        <span>{{ simulatorStore.selectedIC.rotation }}°</span>
       </div>
 
-      <!-- <div
-        v-for="pin in selectedICType?.pins"
-        :key="pin.id"
-        class="property-group"
-      >
-        <label>{{ pin.name }} ({{ pin.type }})</label>
-        <input
-          type="text"
-          v-model="simulatorStore.selectedIC.properties[pin.id]"
-          @input="updateICProperty(pin.id, $event.target.value)"
-          :placeholder="`${pin.name} 属性`"
-        />
-      </div> -->
+      <div class="property-group">
+        <button
+          @click="updateIcProperty"
+        >配置属性</button>
+      </div>
 
-      <button
-        class="delete-button"
-        @click="simulatorStore.deleteSelected"
-      >
-        删除组件
-      </button>
-    </div>
-
-    <div v-else-if="selectedConnection" class="connection-properties">
-      <h3>连线属性</h3>
-      <p>从 {{ selectedConnection.from.icId }} 的 {{ selectedConnection.from.pinId }}</p>
-      <p>到 {{ selectedConnection.to.icId }} 的 {{ selectedConnection.to.pinId }}</p>
-
-      <button
-        class="delete-button"
-        @click="simulatorStore.deleteSelected"
-      >
-        删除连线
-      </button>
     </div>
 
     <div v-else class="empty-state">
@@ -131,6 +119,32 @@ onMounted(() => {
         readonly
         class="serial-textarea"
       ></textarea>
+
+      <p>虚拟串口输入</p>
+      <input
+        v-model="g_serialWriteContent"
+      />
+
+      <p>
+        <input type="checkbox" style="margin-right: 5px;">HEX发送</input>
+      </p>
+
+      <select
+        v-model="g_serialWriteSelect"
+        @click="handleWriteSelectClick"
+      >
+        <option
+          v-for="item in g_serialWriteHistory"
+          :value="item"
+        >
+          {{ item }}
+        </option>
+      </select>
+
+      <button
+        style="margin-top: 5px;"
+        @click="serialWrite"
+      >发送</button>
     </div>
   </div>
 </template>
@@ -207,15 +221,16 @@ onMounted(() => {
 }
 
 .serial-out {
-  height: 50%;
+  height: 60%;
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
   background: #f9f9f9;
 }
 
 .serial-textarea {
   background: white;
-  width: 100%;
-  height: 98%;
+  flex: 1;
 }
 
 </style>

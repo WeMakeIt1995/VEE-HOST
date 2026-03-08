@@ -9,11 +9,6 @@ const simulatorStore = useSimulatorStore();
 const searchQuery = ref('');
 const serialContent = ref('');
 
-function handleSerialOut(val: string, append: boolean)
-{
-  append ? serialContent.value += val : serialContent.value = val;
-}
-
 // 提供store给所有子组件
 provide('simulatorStore', simulatorStore);
 </script>
@@ -21,7 +16,7 @@ provide('simulatorStore', simulatorStore);
 <template>
   <div class="simulator-container">
     <ICLibraryPanel class="library-panel" :search-query="searchQuery" />
-    <DesignCanvas class="design-canvas" @serial-out="handleSerialOut" />
+    <DesignCanvas class="design-canvas" />
     <PropertyPanel class="property-panel" :serial-content="serialContent" />
   </div>
 </template>
@@ -45,7 +40,7 @@ provide('simulatorStore', simulatorStore);
 }
 
 .property-panel {
-  width: 300px;
+  width: 360px;
   border-left: 1px solid #ddd;
 }
 </style>

@@ -95,16 +95,6 @@ pinImg.onerror = (error) => {
   console.log(`load pin image faild`);
 };
 
-function getDisplayStyle() : StyleValue {
-  return {
-    position: 'absolute',
-    width: props.ic.icType.display?.width + 'px',
-    height: props.ic.icType.display?.height + 'px',
-    left: props.ic.icType.display?.left + 'px',
-    top: props.ic.icType.display?.top + 'px',
-  }
-}
-
 function getTopPinStyle(ic: ICInstance, pin: PinDefinition, idx: number) : StyleValue {
   let left = 0;
   let top = 0;
@@ -304,69 +294,69 @@ function getLeftPinAnchorStyle(ic: ICInstance, pin: PinDefinition, idx: number) 
 onMounted(async () => {
   let icType = props.ic.icType;
 
-  if (icType.display) {
-    watch(() => props.displayData, async (val) => {
-      console.log(`display data changed`);
+  // if (icType.display) {
+  //   watch(() => props.displayData, async (val) => {
+  //     console.log(`display data changed`);
 
-      if (icType.display) {
-        let pixelBuffer = new Uint8ClampedArray(icType.display.pixelWidth * icType.display.pixelHeight * 4);
-        for (let i = 0; i < pixelBuffer.length; i += 4) {
-          pixelBuffer[i] = val[i / 4] ? 255 : 0;     // R
-          pixelBuffer[i + 1] = 0;   // G
-          pixelBuffer[i + 2] = 0;   // B
-          pixelBuffer[i + 3] = 255; // A
-        }
+  //     if (icType.display) {
+  //       let pixelBuffer = new Uint8ClampedArray(icType.display.pixelWidth * icType.display.pixelHeight * 4);
+  //       for (let i = 0; i < pixelBuffer.length; i += 4) {
+  //         pixelBuffer[i] = val[i / 4] ? 255 : 0;     // R
+  //         pixelBuffer[i + 1] = 0;   // G
+  //         pixelBuffer[i + 2] = 0;   // B
+  //         pixelBuffer[i + 3] = 255; // A
+  //       }
 
-        // 1. 创建临时 canvas 绘制原始像素数据
-        const srcCanvas = new OffscreenCanvas(icType.display.pixelWidth, icType.display.pixelHeight);
-        const srcCtx = srcCanvas.getContext('2d');
-        if (!srcCtx) return;
+  //       // 1. 创建临时 canvas 绘制原始像素数据
+  //       const srcCanvas = new OffscreenCanvas(icType.display.pixelWidth, icType.display.pixelHeight);
+  //       const srcCtx = srcCanvas.getContext('2d');
+  //       if (!srcCtx) return;
 
-        const imageData = new ImageData(pixelBuffer, icType.display.pixelWidth, icType.display.pixelHeight);
-        srcCtx.putImageData(imageData, 0, 0);
+  //       const imageData = new ImageData(pixelBuffer, icType.display.pixelWidth, icType.display.pixelHeight);
+  //       srcCtx.putImageData(imageData, 0, 0);
 
-        // 2. 创建目标 canvas（280x140）并缩放绘制
-        const destCanvas = new OffscreenCanvas(icType.display.width, icType.display.height);
-        const destCtx = destCanvas.getContext('2d');
-        if (!destCtx) return;
+  //       // 2. 创建目标 canvas（280x140）并缩放绘制
+  //       const destCanvas = new OffscreenCanvas(icType.display.width, icType.display.height);
+  //       const destCtx = destCanvas.getContext('2d');
+  //       if (!destCtx) return;
 
-        // 关键：使用 drawImage 缩放
-        destCtx.drawImage(srcCanvas, 0, 0, icType.display.pixelWidth, icType.display.pixelHeight, 0, 0, icType.display.width, icType.display.height);
+  //       // 关键：使用 drawImage 缩放
+  //       destCtx.drawImage(srcCanvas, 0, 0, icType.display.pixelWidth, icType.display.pixelHeight, 0, 0, icType.display.width, icType.display.height);
 
-        // 3. 转换为 Data URL 并赋值给 <img>
-        const blob = await destCanvas.convertToBlob({ type: 'image/png' });
-        displaySrc.value = URL.createObjectURL(blob);
-      }
-    });
+  //       // 3. 转换为 Data URL 并赋值给 <img>
+  //       const blob = await destCanvas.convertToBlob({ type: 'image/png' });
+  //       displaySrc.value = URL.createObjectURL(blob);
+  //     }
+  //   });
 
-    let pixelBuffer = new Uint8ClampedArray(icType.display.pixelWidth * icType.display.pixelHeight * 4);
-    for (let i = 0; i < pixelBuffer.length; i += 4) {
-      pixelBuffer[i] = 255;     // R
-      pixelBuffer[i + 1] = 0;   // G
-      pixelBuffer[i + 2] = 0;   // B
-      pixelBuffer[i + 3] = 255; // A
-    }
+  //   let pixelBuffer = new Uint8ClampedArray(icType.display.pixelWidth * icType.display.pixelHeight * 4);
+  //   for (let i = 0; i < pixelBuffer.length; i += 4) {
+  //     pixelBuffer[i] = 255;     // R
+  //     pixelBuffer[i + 1] = 0;   // G
+  //     pixelBuffer[i + 2] = 0;   // B
+  //     pixelBuffer[i + 3] = 255; // A
+  //   }
 
-    // 1. 创建临时 canvas 绘制原始像素数据
-    const srcCanvas = new OffscreenCanvas(icType.display.pixelWidth, icType.display.pixelHeight);
-    const srcCtx = srcCanvas.getContext('2d');
-    if (!srcCtx) return;
+  //   // 1. 创建临时 canvas 绘制原始像素数据
+  //   const srcCanvas = new OffscreenCanvas(icType.display.pixelWidth, icType.display.pixelHeight);
+  //   const srcCtx = srcCanvas.getContext('2d');
+  //   if (!srcCtx) return;
 
-    const imageData = new ImageData(pixelBuffer, icType.display.pixelWidth, icType.display.pixelHeight);
-    srcCtx.putImageData(imageData, 0, 0);
+  //   const imageData = new ImageData(pixelBuffer, icType.display.pixelWidth, icType.display.pixelHeight);
+  //   srcCtx.putImageData(imageData, 0, 0);
 
-    // 2. 创建目标 canvas（280x140）并缩放绘制
-    const destCanvas = new OffscreenCanvas(icType.display.width, icType.display.height);
-    const destCtx = destCanvas.getContext('2d');
-    if (!destCtx) return;
+  //   // 2. 创建目标 canvas（280x140）并缩放绘制
+  //   const destCanvas = new OffscreenCanvas(icType.display.width, icType.display.height);
+  //   const destCtx = destCanvas.getContext('2d');
+  //   if (!destCtx) return;
 
-    // 关键：使用 drawImage 缩放
-    destCtx.drawImage(srcCanvas, 0, 0, icType.display.pixelWidth, icType.display.pixelHeight, 0, 0, icType.display.width, icType.display.height);
+  //   // 关键：使用 drawImage 缩放
+  //   destCtx.drawImage(srcCanvas, 0, 0, icType.display.pixelWidth, icType.display.pixelHeight, 0, 0, icType.display.width, icType.display.height);
 
-    // 3. 转换为 Data URL 并赋值给 <img>
-    const blob = await destCanvas.convertToBlob({ type: 'image/png' });
-    displaySrc.value = URL.createObjectURL(blob);
-  }
+  //   // 3. 转换为 Data URL 并赋值给 <img>
+  //   const blob = await destCanvas.convertToBlob({ type: 'image/png' });
+  //   displaySrc.value = URL.createObjectURL(blob);
+  // }
 })
 
 </script>
@@ -394,12 +384,6 @@ onMounted(async () => {
       width: mainImageWidth + 'px',
       height: mainImageHeight + 'px',
     }"
-  />
-
-  <img
-    v-if="icType.type === 'Display'"
-    :src="displaySrc"
-    :style="getDisplayStyle()"
   />
 
   <img

@@ -7,9 +7,27 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 let mainWindow
 
 function createWindow() {
-  const { screen } = require('electron')
+  const { screen, protocol } = require('electron')
   const primaryDisplay = screen.getPrimaryDisplay()
   const { width, height } = primaryDisplay.workAreaSize
+
+  protocol.interceptFileProtocol('file', (request, callback) => {
+    console.info(`interceptFileProtocol ${request.url}`)
+
+    let url = request.url.substr(7) // 移除 'file://'
+
+    // 处理 WASM 文件
+    if (url.endsWith('.wasm')) {
+      const filePath = path.normalize(path.join(__dirname, url))
+      callback({
+        path: filePath,
+        headers: { 'Content-Type': 'application/wasm' }
+      })
+    } else {
+      const filePath = path.normalize(path.join(__dirname, url))
+      callback({ path: filePath })
+    }
+  })
 
   // 创建浏览器窗口
   mainWindow = new BrowserWindow({
@@ -21,6 +39,7 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     webPreferences: {
+      webSecurity: isDev ? false : true,
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
