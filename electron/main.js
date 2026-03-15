@@ -11,23 +11,23 @@ function createWindow() {
   const primaryDisplay = screen.getPrimaryDisplay()
   const { width, height } = primaryDisplay.workAreaSize
 
-  protocol.interceptFileProtocol('file', (request, callback) => {
-    console.info(`interceptFileProtocol ${request.url}`)
+  // protocol.interceptFileProtocol('file', (request, callback) => {
+  //   console.info(`interceptFileProtocol ${request.url}`)
 
-    let url = request.url.substr(7) // 移除 'file://'
+  //   let url = request.url.substr(7) // 移除 'file://'
 
-    // 处理 WASM 文件
-    if (url.endsWith('.wasm')) {
-      const filePath = path.normalize(path.join(__dirname, url))
-      callback({
-        path: filePath,
-        headers: { 'Content-Type': 'application/wasm' }
-      })
-    } else {
-      const filePath = path.normalize(path.join(__dirname, url))
-      callback({ path: filePath })
-    }
-  })
+  //   // 处理 WASM 文件
+  //   if (url.endsWith('.wasm')) {
+  //     const filePath = path.normalize(path.join(__dirname, url))
+  //     callback({
+  //       path: filePath,
+  //       headers: { 'Content-Type': 'application/wasm' }
+  //     })
+  //   } else {
+  //     const filePath = path.normalize(path.join(__dirname, url))
+  //     callback({ path: filePath })
+  //   }
+  // })
 
   // 创建浏览器窗口
   mainWindow = new BrowserWindow({

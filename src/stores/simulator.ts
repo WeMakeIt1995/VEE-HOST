@@ -245,6 +245,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
     placedICs: [],
     connections: [],
     selectedElement: { type: null, id: null },
+    selectElementGroup: false,
     activePin: '',
     serialOpen: false,
     serialOut: '',
@@ -275,6 +276,11 @@ export const useSimulatorStore = defineStore('simulator', () => {
   let g_selectionBound: joint.shapes.standard.Rectangle | null = null;
   let g_selectionStart = {x: 0, y: 0};
   let g_selectionLinks: joint.shapes.standard.Link[] = [];
+  let g_moveICParent: joint.dia.Cell | null = null;
+  let g_moveICStartChildPos: Record<string, {x: number, y: number}> = {};
+  let g_moveICParentMoved = false;
+  let g_moveICStartMousePos = {x: 0, y: 0};
+  let g_moveICStartParentPos = {x: 0, y: 0};
 
   let g_isPanning = false;
   let g_panningStart = {x: 0, y: 0};
@@ -297,6 +303,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
       placedICs: [],
       connections: [],
       selectedElement: { type: null, id: null },
+      selectElementGroup: false,
       activePin: '',
       serialOpen: false,
       serialOut: '',
@@ -366,15 +373,31 @@ export const useSimulatorStore = defineStore('simulator', () => {
     }
   }
 
+  function getICIdByGroupId(id: string) {
+    for (let i in g_icGroupMap) {
+      if (g_icGroupMap[i]!.id === id) {
+        return i;
+      }
+    }
+    return '';
+  }
+
   function pushDoStack() {
+    // console.log(new Error().stack);
+
     if (! g_paperPushStackEnable) {
       console.log(`push do stack false`);
       return;
     }
     console.log(`push do stack true`);
 
+    let save = savePaper();
+    if (g_paperDoStackCurrent && g_paperDoStack[g_paperDoStackCurrent - 1] === save) {
+      return;
+    }
+
     g_paperDoStack = g_paperDoStack.slice(0, g_paperDoStackCurrent);
-    g_paperDoStack.push(savePaper());
+    g_paperDoStack.push(save);
     g_paperDoStackCurrent ++;
   }
 
@@ -405,7 +428,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
     }
   }
 
-  function getProjectionLinkSegments(link: joint.dia.Link) {
+  function getIntersectingLinkSegments(link: joint.dia.Link) {
     let r: joint.dia.Link[] = [];
     let connections = state.value.connections.filter((segments) => {
       // segments.forEach((conn) => console.log(`conn.id=${conn.id}`));
@@ -471,140 +494,6 @@ export const useSimulatorStore = defineStore('simulator', () => {
     selectElement(null, null, null);
   }
 
-  function updateLinks(newLinkId: string = '') {
-    let links: joint.dia.Link[] = [];
-
-    g_jointGraph.getCells().forEach((v) => {
-      v.isLink() && links.push(v);
-    });
-
-    function routeAll() {
-      let r = false;
-
-      links.forEach((v1, i1) => {
-        if (newLinkId && v1.id !== newLinkId) {
-          return;
-        }
-        if (r) {
-          return;
-        }
-
-        links.forEach((v2, i2) => {
-          if (newLinkId && v1 !== v2) {
-            // nothing to do
-          }
-          else if (v1 === v2 || i1 > i2 || r) {
-            return;
-          }
-
-          let vertices1 = v1.vertices();
-          let vertices2 = v2.vertices();
-
-          for (let i = 1; i < vertices1.length; i ++) {
-            for (let j = 1; j < vertices2.length; j ++) {
-              let segment1: Segment = [[vertices1[i - 1]!.x, vertices1[i - 1]!.y], [vertices1[i]!.x, vertices1[i]!.y]];
-              let segment2: Segment = [[vertices2[j - 1]!.x, vertices2[j - 1]!.y], [vertices2[j]!.x, vertices2[j]!.y]];
-
-              if (! areSegmentsParallel(segment1, segment2)) {
-                continue;
-              }
-
-              let distance = distanceBetweenParallelSegments(segment1, segment2);
-
-              if (distance > 5) {
-                continue;
-              }
-
-              console.log(`segment parallel`);
-              console.log(`calc vertices `, vertices1, vertices2);
-              console.log(segment1, segment2);
-              console.log(`distance `, distance);
-
-              let previousSegment1: Segment | [] = [];
-              let previousSegment2: Segment | [] = [];
-              if (i > 2 && j > 2) {
-                previousSegment1 = [[vertices1[i - 2]!.x, vertices1[i - 2]!.y], [vertices1[i - 1]!.x, vertices1[i - 1]!.y]];
-                previousSegment2 = [[vertices2[j - 2]!.x, vertices2[j - 2]!.y], [vertices2[j - 1]!.x, vertices2[j - 1]!.y]];
-              }
-
-              let nextSegment1: Segment | [] = [];
-              let nextSegment2: Segment | [] = [];
-              if (i < vertices1.length - 1 && j < vertices2.length - 1) {
-                nextSegment1 = [[vertices1[i]!.x, vertices1[i]!.y], [vertices1[i + 1]!.x, vertices1[i + 1]!.y]];
-                nextSegment2 = [[vertices2[j]!.x, vertices2[j]!.y], [vertices2[j + 1]!.x, vertices2[j + 1]!.y]];
-              }
-
-              function changeCell(
-                cell: joint.dia.Cell,
-                vertices: joint.dia.Link.Vertex[],
-                previousSegment: Segment | [],
-                segment: Segment,
-                nextSegment: Segment | [],
-                segmentIndex: number,
-              ) {
-                let translation = [0, 0];
-                let deg = NaN;
-
-                if (nextSegment.length) {
-                  deg = getTurnAngle(segment[0], segment[1], nextSegment[1]);
-                  translation = getSideShiftTranslation(segment, Math.round(10 - distance), deg > 0 ? 'right' : 'left');
-
-                  console.log(`side by next segment, deg=${deg}`);
-                }
-                else if (previousSegment.length) {
-                  deg = getTurnAngle(previousSegment[0], previousSegment[1], segment[1]);
-                  translation = getSideShiftTranslation(segment, Math.round(10 - distance), deg < 0 ? 'right' : 'left');
-
-                  console.log(`side by previous segment, deg=${deg}`);
-                }
-                if (isNaN(deg)) {
-                  return;
-                }
-
-                if (previousSegment.length) {
-                  let p = findIntersectionAfterTranslation(segment, previousSegment, translation[0]!, translation[1]!);
-                  if (p !== null) {
-                    vertices[segmentIndex - 1] = {x: p[0], y: p[1]};
-                  }
-                }
-                if (nextSegment.length) {
-                  let p = findIntersectionAfterTranslation(segment, nextSegment, translation[0]!, translation[1]!);
-                  if (p !== null) {
-                    vertices[segmentIndex] = {x: p[0], y: p[1]};
-                  }
-                }
-
-                console.log(`new vertices `, vertices);
-
-                cell.set({
-                  vertices,
-                });
-              }
-
-              if (newLinkId) {
-                changeCell(v1, vertices1, previousSegment1, segment1, nextSegment1, i);
-              }
-              else if (segmentLengthSquared(segment1) > segmentLengthSquared(segment2)) {
-                changeCell(v1, vertices1, previousSegment1, segment1, nextSegment1, i);
-              }
-              else {
-                changeCell(v2, vertices2, previousSegment2, segment2, nextSegment2, j);
-              }
-
-              r = true;
-              return;
-            }
-          }
-        });
-      });
-
-      return r;
-    }
-
-    let count = 0;
-    while (routeAll() && count ++ < 256);
-  }
-
   function newPaperLink() {
     return new joint.shapes.standard.Link({
       attrs: {
@@ -645,6 +534,90 @@ export const useSimulatorStore = defineStore('simulator', () => {
     });
   }
 
+  function newSelectionBound() {
+    return new joint.shapes.standard.Rectangle({
+      attrs: {
+        body: {
+          fill: 'rgba(0, 100, 255, 0.1)',
+          stroke: 'rgba(0, 100, 255, 0.8)',
+          strokeDasharray: '5.2',
+        },
+      },
+    });
+  }
+
+  function selectionBoundEmbed(cells: joint.dia.Cell[]) {
+    if (! g_selectionBound) {
+      return;
+    }
+
+    const minZ = g_selectionBound.getEmbeddedCells().concat(cells).reduce((z, el) => {
+      return Math.min(el.get('z') || 0, z);
+    }, - Infinity);
+
+    g_selectionBound.set('z', minZ - 1);
+    g_selectionBound.embed(cells);
+    g_selectionBound.fitEmbeds();
+
+    state.value.selectElementGroup = true;
+  }
+
+  function selectionBoundClear() {
+    if (! g_selectionBound) {
+      return;
+    }
+
+    g_jointGraph.removeCell(g_selectionBound!);
+    delete g_icGroupMap[g_selectionBound.id];
+    g_selectionBound = null;
+
+    state.value.selectElementGroup = false;
+  }
+
+  // make sure get rect after rotate
+  function getCellRect(cell: joint.dia.Cell) {
+    let r = (cell as joint.dia.Element).getBBox();
+    if (cell.angle() === 90 || cell.angle() === 270) {
+      console.log(`have angle`);
+    }
+    return r;
+  }
+
+  function moveICPrepare(cell: joint.dia.Cell, mousePos: {x: number, y: number}) {
+    g_moveICStartMousePos = {... mousePos};
+    g_moveICStartParentPos = getCellRect(cell);
+    g_moveICStartChildPos = {};
+
+    cell.getEmbeddedCells().forEach((v) => {
+      g_moveICStartChildPos[v.id] = getCellRect(v);
+
+      // selection bound child-child
+      v.getEmbeddedCells().forEach((v) => {
+        g_moveICStartChildPos[v.id] = getCellRect(v);
+      });
+    });
+  }
+
+  function moveIC(cell: joint.dia.Cell, dx: number, dy: number) {
+    cell.getEmbeddedCells().forEach((v) => {
+      let p = g_moveICStartChildPos[v.id];
+      if (!p) {
+        return;
+      }
+      (v as joint.dia.Element).position(p.x + dx, p.y + dy);
+
+      // selection bound child-child
+      v.getEmbeddedCells().forEach((v) => {
+        let p = g_moveICStartChildPos[v.id];
+        if (!p) {
+          return;
+        }
+        (v as joint.dia.Element).position(p.x + dx, p.y + dy);
+      });
+    });
+    (cell as joint.dia.Element).position(g_moveICStartParentPos.x + dx, g_moveICStartParentPos.y + dy);
+  }
+
   function changeHighlightLinks(links: joint.dia.Link[], color: string = 'lightblue') {
     console.log(`changeHighlightLinks links.length=${links.length}`);
 
@@ -678,17 +651,12 @@ export const useSimulatorStore = defineStore('simulator', () => {
     g_jointGraph = graph;
     g_jointPaper = paper;
 
-    let g_parent: joint.dia.Cell | null = null;
-    let g_startMousePos = {x: 0, y: 0};
-    let g_startParentPos = {x: 0, y: 0};
-    let g_startChildPos: Record<string, typeof g_startMousePos> = {};
-
     paper.on('element:pointerclick', (elementView, evt) => {
       g_jointPaper.el.focus();
 
       const element = elementView.model;
 
-      console.log(`joint.dia.paper.on.element:pointerclick: id=${element.id}`);
+      console.log(`joint.dia.paper.on.element:pointerclick: id=${element.id}, ctrlKey=${evt.ctrlKey}`);
 
       if (g_pinImgMap[element.id]) {
         selectElement('pin', getIcIdByPinId(String(element.id)), String(element.id));
@@ -697,7 +665,19 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
       for (const ic of state.value.placedICs) {
         if (element.id === ic.id) {
-          selectElement('ic', ic.id, null);
+          if (state.value.selectedElement.id && state.value.selectedElement.id !== ic.id && evt.ctrlKey) {
+            console.log(`add element to selection bound`);
+
+            if (! g_selectionBound) {
+              g_selectionBound = newSelectionBound();
+              g_selectionBound.addTo(graph);
+            }
+            g_icGroupMap[state.value.selectedElement.id] && selectionBoundEmbed([g_icGroupMap[state.value.selectedElement.id]!]);
+            g_icGroupMap[element.id] && selectionBoundEmbed([g_icGroupMap[element.id]!]);
+          }
+          else {
+            selectElement('ic', ic.id, null);
+          }
           break;
         }
       }
@@ -721,14 +701,15 @@ export const useSimulatorStore = defineStore('simulator', () => {
         }
       });
 
-      console.log(`new link vertices `, vertices);
+      console.log(`new link ${link.id} vertices `, vertices);
 
-      cell.set({
+      link.set({
         vertices,
         router: null
       });
 
-      // updateLinks(cell.id as string);
+      linkView.update();
+      linkView.requestUpdate(0);
     });
 
     paper.on('element:pointerdown', (elementView, evt) => {
@@ -736,36 +717,30 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
       const element = elementView.model;
 
-      g_parent = element.getParentCell();
-      if (g_parent) {
+      g_moveICParent = element.getParentCell();
+      // selection bound
+      if (g_moveICParent?.getParentCell()) {
+        g_moveICParent = g_moveICParent.getParentCell();
+      }
+      if (g_moveICParent) {
         evt.stopImmediatePropagation();
 
-        g_startMousePos = {x: evt.clientX!, y: evt.clientY!};
-        g_startParentPos = { ...g_parent.position() };
-
-        g_parent.getEmbeddedCells().forEach((v) => {
-          g_startChildPos[v.id] = v.position();
-        });
+        moveICPrepare(g_moveICParent, {x: evt.clientX!, y: evt.clientY!});
       }
     });
 
     paper.on('cell:pointermove', (cellView, evt) => {
-      if (! g_parent) {
+      if (! g_moveICParent) {
         return;
       }
 
       evt.stopImmediatePropagation();
 
-      const dx = evt.clientX! - g_startMousePos.x;
-      const dy = evt.clientY! - g_startMousePos.y;
+      const dx = evt.clientX! - g_moveICStartMousePos.x;
+      const dy = evt.clientY! - g_moveICStartMousePos.y;
 
-      g_parent.getEmbeddedCells().forEach((v) => {
-        let p = g_startChildPos[v.id];
-        // @ts-ignore
-        v.position(p.x + dx, p.y + dy);
-      });
-      // @ts-ignore
-      g_parent.position(g_startParentPos.x + dx, g_startParentPos.y + dy);
+      moveIC(g_moveICParent, dx, dy);
+      g_moveICParentMoved = true;
 
       paper.trigger('render');
     });
@@ -773,7 +748,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
     paper.on('cell:pointerup', (cellView, evt) => {
       g_jointPaper.el.focus();
 
-      if (! g_parent) {
+      if (! g_moveICParent || ! g_moveICParentMoved) {
         return;
       }
 
@@ -790,7 +765,8 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
       pushDoStack();
 
-      g_parent = null;
+      g_moveICParent = null;
+      g_moveICParentMoved = false;
     });
 
     paper.on('cell:mouseenter', async (cellView, evt) => {
@@ -830,7 +806,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
       g_makeLinkSegments.push(link);
 
-      changeHighlightLinks([... getProjectionLinkSegments(link), link], g_highlightLinkColor);
+      changeHighlightLinks([... getIntersectingLinkSegments(link), link], g_highlightLinkColor);
     });
 
     paper.on('blank:pointerdown', (evt, x, y) => {
@@ -847,15 +823,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
           g_selectionBound.unembed(g_selectionBound.getEmbeddedCells());
           graph.removeCell(g_selectionBound);
         }
-        g_selectionBound = new joint.shapes.standard.Rectangle({
-          attrs: {
-            body: {
-              fill: 'rgba(0, 100, 255, 0.1)',
-              stroke: 'rgba(0, 100, 255, 0.8)',
-              strokeDasharray: '5.2',
-            },
-          },
-        });
+        g_selectionBound = newSelectionBound();
         g_selectionBound.addTo(graph);
         g_selectionStart = {x, y};
       }
@@ -900,25 +868,19 @@ export const useSimulatorStore = defineStore('simulator', () => {
         ) {
           return false;
         }
-
-        const rect = v.getBBox();
-
-        return !(
-          selectionRect.x > rect.x + rect.width ||
-          selectionRect.x + selectionRect.width < rect.x ||
-          selectionRect.y > rect.y + rect.height ||
-          selectionRect.y + selectionRect.height < rect.y
-        );
+        return v.getBBox().intersect(selectionRect);
       });
 
-      if (elements.length) {
-        const minZ = elements.reduce((z, el) => {
-          return Math.min(el.get('z') || 0, z);
-        }, - Infinity);
+      if (elements.length === 1) {
+        selectElement('ic', `${getICIdByGroupId(elements[0]!.id.toString())}`, null);
+        selectionBoundClear();
+        return;
+      }
 
-        g_selectionBound!.set('z', minZ - 1);
-        g_selectionBound!.embed([...elements]);
-        g_selectionBound!.fitEmbeds();
+      if (elements.length) {
+        selectionBoundEmbed(elements);
+
+        g_icGroupMap[g_selectionBound.id] = g_selectionBound;
 
         return;
       }
@@ -932,7 +894,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         console.log(`select links`);
 
         for (const item of links) {
-          getProjectionLinkSegments(item).forEach((v) => {
+          getIntersectingLinkSegments(item).forEach((v) => {
             let view = paper.findViewByModel(v);
             if (! view) {
               return;
@@ -950,15 +912,13 @@ export const useSimulatorStore = defineStore('simulator', () => {
         }
         g_selectionLinks = links;
 
-        graph.removeCell(g_selectionBound!);
-        g_selectionBound = null;
+        selectionBoundClear();
 
         return;
       }
 
       // none select
-      graph.removeCell(g_selectionBound!);
-      g_selectionBound = null;
+      selectionBoundClear();
     });
 
     // 绑定滚轮事件
@@ -1073,7 +1033,8 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
         g_makeLinkProjectionLink = null;
 
-        g_makeLinkSegments.length && graph.removeCell(g_makeLinkSegments.pop()!);
+        let lastSegment = g_makeLinkSegments.pop();
+        lastSegment && graph.removeCell(lastSegment);
 
         // make new link to emit paper.add event
         let link = newPaperLink();
@@ -1086,12 +1047,30 @@ export const useSimulatorStore = defineStore('simulator', () => {
           port: 'port1',
         };
 
+        if (lastSegment && !g_makeLinkSegments.length) {
+          let vertices = lastSegment.vertices();
+          if (vertices.length) {
+            source = {
+              x: vertices[0]?.x,
+              y: vertices[0]?.y,
+            };
+          }
+        }
+
+        if (typeof source.x === 'number') {
+          if (Math.abs(x - source.x!) < 10) {
+            x = source.x!;
+          }
+          if (Math.abs(y - source.y!) < 10) {
+            y = source.y!;
+          }
+        }
+
         link.source(source);
-        link.target({
-          x,
-          y,
-        });
+        link.target({ x, y });
         link.addTo(graph);
+
+        console.log(`create link segment source-target`, source, link.target());
 
         g_makeLinkSegments.push(link);
 
@@ -1157,7 +1136,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
         g_makeLinkSegments.push(link);
 
-        changeHighlightLinks([... getProjectionLinkSegments(linkView.model), ... g_makeLinkSegments], g_highlightLinkColor);
+        changeHighlightLinks([... getIntersectingLinkSegments(linkView.model), ... g_makeLinkSegments], g_highlightLinkColor);
 
         return;
       }
@@ -1265,6 +1244,8 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
             state.value.connections[idx] = segments;
 
+            pushDoStack();
+
             return true;
           });
         }
@@ -1275,7 +1256,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
       else {
         selectElement('connection', `${linkView.model.id}`, null);
 
-        getProjectionLinkSegments(linkView.model).forEach((v) => {
+        getIntersectingLinkSegments(linkView.model).forEach((v) => {
           let view = paper.findViewByModel(v);
           if (! view) {
             return;
@@ -1303,7 +1284,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         return;
       }
 
-      changeHighlightLinks(getProjectionLinkSegments(linkView.model), g_highlightLinkColor);
+      changeHighlightLinks(getIntersectingLinkSegments(linkView.model), g_highlightLinkColor);
     });
 
     paper.on('link:mouseleave', (linkView) => {
@@ -1340,6 +1321,8 @@ export const useSimulatorStore = defineStore('simulator', () => {
     if (state.value.selectedElement.type !== 'ic') return null;
     return state.value.placedICs.find(ic => ic.id === state.value.selectedElement.id);
   });
+
+  const selectElementGroup = computed(() => state.value.selectElementGroup);
 
   // Actions
   function addIC(typeId: string, x: number, y: number, id: string = '') {
@@ -1715,8 +1698,6 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
     newConnection.vertices = vertices;
 
-    pushDoStack();
-
     return newConnection;
   }
 
@@ -2054,7 +2035,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
       let ele = g_jointGraph.getCell(`${state.value.selectedElement.id}`);
       if (ele && ele.isLink()) {
-        getProjectionLinkSegments(ele).forEach((v) => {
+        getIntersectingLinkSegments(ele).forEach((v) => {
           joint.highlighters.mask.remove(g_jointPaper.findViewByModel(v));
         });
       }
@@ -2065,7 +2046,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
       g_makeLinkSegments = [];
 
       for (const item of g_selectionLinks) {
-        getProjectionLinkSegments(item).forEach((v) => {
+        getIntersectingLinkSegments(item).forEach((v) => {
           view = g_jointPaper.findViewByModel(v);
           view && joint.highlighters.mask.remove(view);
         });
@@ -2120,6 +2101,24 @@ export const useSimulatorStore = defineStore('simulator', () => {
             });
 
             createConnection([segment]);
+
+            let lastSegments = state.value.connections[state.value.connections.length - 1]!;
+
+            // push do stack after link vertices processed
+            setTimeout(() => {
+              for (const seg of lastSegments) {
+                let link = g_jointGraph.getCell(seg.id) as joint.dia.Link;
+                if (! link) {
+                  continue;
+                }
+                seg.vertices = link.vertices();
+              }
+
+              pushDoStack();
+            }, 10);
+
+            console.log(`selectElement craete connection`);
+
             if (mergeIdx >= 0) {
               let segments = state.value.connections.pop()!;
               // @ts-ignore
@@ -2197,6 +2196,259 @@ export const useSimulatorStore = defineStore('simulator', () => {
     }
 
     jointElementRotation(state.value.selectedElement.id, angle);
+  }
+
+  function selectAlign(side: 'top' | 'right' | 'bottom' | 'left', mode: 'none' | 'left' | 'average' | 'center' | 'right', _pushDoStack = true) {
+    if (! g_selectionBound) {
+      return;
+    }
+    const selectionRect = g_selectionBound.getBBox();
+
+    function horizontalAlign(cells: joint.dia.Cell[], startX: number) {
+      cells.reduce((acc, cell) => {
+        let r = acc + getCellRect(cell).width;
+        moveICPrepare(cell, {x: 0, y: 0});
+        moveIC(cell, acc - getCellRect(cell).x, 0);
+        return r;
+      }, startX);
+    }
+
+    function verticalAlign(cells: joint.dia.Cell[], startY: number) {
+      cells.reduce((acc, cell) => {
+        let r = acc + getCellRect(cell).height;
+        moveICPrepare(cell, {x: 0, y: 0});
+        moveIC(cell, 0, acc - getCellRect(cell).y);
+        return r;
+      }, startY);
+    }
+
+    switch (side) {
+    case 'top': {
+      switch (mode) {
+      case 'none': {
+        g_selectionBound.getEmbeddedCells().forEach((v) => {
+          moveICPrepare(v, {x: 0, y: 0});
+          moveIC(v, 0, selectionRect.y - v.position().y);
+        });
+      } break;
+
+      case 'left': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().x - b.position().x;
+        });
+        horizontalAlign(cells, selectionRect.x);
+      } break;
+
+      case 'average': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().x - b.position().x;
+        });
+        cells.forEach((cell, idx) => {
+          moveICPrepare(cell, {x: 0, y: 0});
+          moveIC(
+            cell,
+            selectionRect.x + selectionRect.width / cells.length / 2 * (idx * 2 + 1) - getCellRect(cell).width / 2 - getCellRect(cell).x,
+            0
+          );
+        });
+      } break;
+
+      case 'center': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().x - b.position().x;
+        });
+        let startX = selectionRect.x + (selectionRect.width - cells.reduce((acc, cell) => acc + getCellRect(cell).width, 0)) / 2;
+        horizontalAlign(cells, startX);
+      } break;
+
+      case 'right': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().x - b.position().x;
+        });
+        let startX = selectionRect.x + selectionRect.width - cells.reduce((acc, cell) => acc + getCellRect(cell).width, 0);
+        horizontalAlign(cells, startX);
+      } break;
+      }
+    } break;
+
+    case 'right': {
+      switch (mode) {
+      case 'none': {
+        g_selectionBound.getEmbeddedCells().forEach((v) => {
+          moveICPrepare(v, {x: 0, y: 0});
+          moveIC(v, selectionRect.x + selectionRect.width - getCellRect(v).width - v.position().x, 0);
+        });
+      } break;
+
+      case 'left': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().y - b.position().y;
+        });
+        verticalAlign(cells, selectionRect.y);
+      } break;
+
+      case 'average': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().x - b.position().x;
+        });
+        cells.forEach((cell, idx) => {
+          moveICPrepare(cell, {x: 0, y: 0});
+          moveIC(
+            cell,
+            0,
+            selectionRect.y + selectionRect.height / cells.length / 2 * (idx * 2 + 1) - getCellRect(cell).height / 2 - getCellRect(cell).y
+          );
+        });
+      } break;
+
+      case 'center': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().y - b.position().y;
+        });
+        const startY = selectionRect.y + (selectionRect.height - cells.reduce((acc, cell) => acc + getCellRect(cell).height, 0)) / 2;
+        verticalAlign(cells, startY);
+      } break;
+
+      case 'right': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().y - b.position().y;
+        });
+        const startY = selectionRect.y + selectionRect.height - cells.reduce((acc, cell) => acc + getCellRect(cell).height, 0);
+        verticalAlign(cells, startY);
+      } break;
+      }
+    } break;
+
+    case 'bottom': {
+      switch (mode) {
+      case 'none': {
+        g_selectionBound.getEmbeddedCells().forEach((v) => {
+          moveICPrepare(v, {x: 0, y: 0});
+          moveIC(v, 0, selectionRect.y + selectionRect.height - v.position().y - getCellRect(v).height);
+        });
+      } break;
+
+      case 'left': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().x - b.position().x;
+        });
+        horizontalAlign(cells, selectionRect.x);
+      } break;
+
+      case 'average': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().x - b.position().x;
+        });
+        cells.forEach((cell, idx) => {
+          moveICPrepare(cell, {x: 0, y: 0});
+          moveIC(
+            cell,
+            selectionRect.x + selectionRect.width / cells.length / 2 * (idx * 2 + 1) - getCellRect(cell).width / 2 - getCellRect(cell).x,
+            0
+          );
+        });
+      } break;
+
+      case 'center': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().x - b.position().x;
+        });
+        let startX = selectionRect.x + (selectionRect.width - cells.reduce((acc, cell) => acc + getCellRect(cell).width, 0)) / 2;
+        horizontalAlign(cells, startX);
+      } break;
+
+      case 'right': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().x - b.position().x;
+        });
+        let startX = selectionRect.x + selectionRect.width - cells.reduce((acc, cell) => acc + getCellRect(cell).width, 0);
+        horizontalAlign(cells, startX);
+      } break;
+      }
+    } break;
+
+    case 'left': {
+      switch (mode) {
+      case 'none': {
+        g_selectionBound.getEmbeddedCells().forEach((v) => {
+          moveICPrepare(v, {x: 0, y: 0});
+          moveIC(v, selectionRect.x - v.position().x, 0);
+        });
+      } break;
+
+      case 'left': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().y - b.position().y;
+        });
+        verticalAlign(cells, selectionRect.y);
+      } break;
+
+      case 'average': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().x - b.position().x;
+        });
+        cells.forEach((cell, idx) => {
+          moveICPrepare(cell, {x: 0, y: 0});
+          moveIC(
+            cell,
+            0,
+            selectionRect.y + selectionRect.height / cells.length / 2 * (idx * 2 + 1) - getCellRect(cell).height / 2 - getCellRect(cell).y
+          );
+        });
+      } break;
+
+      case 'center': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().y - b.position().y;
+        });
+        const startY = selectionRect.y + (selectionRect.height - cells.reduce((acc, cell) => acc + getCellRect(cell).height, 0)) / 2;
+        verticalAlign(cells, startY);
+      } break;
+
+      case 'right': {
+        selectAlign(side, 'none', false);
+
+        const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
+          return a.position().y - b.position().y;
+        });
+        const startY = selectionRect.y + selectionRect.height - cells.reduce((acc, cell) => acc + getCellRect(cell).height, 0);
+        verticalAlign(cells, startY);
+      } break;
+      }
+    } break;
+    }
+
+    _pushDoStack && pushDoStack();
   }
 
   function setIcLabel(label: string, icId: string | null = null) {
@@ -2299,18 +2551,19 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
   return {
     state,
+    icCategories,
+    selectedIC,
+    selectElementGroup,
+
     reset,
     savePaper,
     loadPaper,
     undo,
     redo,
-    updateLinks,
     keyDelete,
     keyEscape,
     resetPaperScale,
     initJoint,
-    icCategories,
-    selectedIC,
     addIC,
     updateIcState,
     icAddToJointGraph,
@@ -2320,6 +2573,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
     startSimulator,
     selectElement,
     selectRotation,
+    selectAlign,
     setIcLabel,
     createPinImageId,
     createPinId,

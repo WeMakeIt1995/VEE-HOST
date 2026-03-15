@@ -17,13 +17,6 @@ const props = defineProps<{
 
 const simulatorStore = inject<ReturnType<typeof useSimulatorStore>>('simulatorStore')!;
 
-const selectedConnection = computed(() => {
-  if (simulatorStore.state.selectedElement.type !== 'connection') return null;
-  return simulatorStore.state.connections.find(
-    conn => conn.id === simulatorStore.state.selectedElement.id
-  );
-});
-
 const selectedICType = computed(() => {
   if (!simulatorStore.selectedIC) return null;
   return simulatorStore.state.icTypes.find(
@@ -41,10 +34,6 @@ function serialWrite() {
 function handleWriteSelectClick() {
   // @ts-ignore
   g_serialWriteContent.value = g_serialWriteSelect.value;
-}
-
-function onRotationChange(degree: number) {
-  simulatorStore.selectRotation(degree);
 }
 
 function updateIcProperty() {
@@ -71,20 +60,160 @@ onMounted(() => {
 
 <template>
   <div class="property-panel">
-    <div v-if="simulatorStore.selectedIC" class="ic-properties">
+    <div v-if="simulatorStore.selectElementGroup" class="ic-properties">
+      <h3>群组操作</h3>
+
+      <h4>元素靠顶部</h4>
+      <div class="property-group">
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('top', 'none')"
+        >
+          顶对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('top', 'left')"
+        >
+          左对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('top', 'average')"
+        >
+          分布对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('top', 'center')"
+        >
+          居中对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('top', 'right')"
+        >
+          右对齐
+        </button>
+      </div>
+
+      <h4>元素靠右部</h4>
+      <div class="property-group">
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('right', 'none')"
+        >
+          右对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('right', 'left')"
+        >
+          顶对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('right', 'average')"
+        >
+          分布对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('right', 'center')"
+        >
+          居中对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('right', 'right')"
+        >
+          底对齐
+        </button>
+      </div>
+
+      <h4>元素靠底部</h4>
+      <div class="property-group">
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('bottom', 'none')"
+        >
+          底对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('bottom', 'left')"
+        >
+          左对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('bottom', 'average')"
+        >
+          分布对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('bottom', 'center')"
+        >
+          居中对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('bottom', 'right')"
+        >
+          右对齐
+        </button>
+      </div>
+
+      <h4>元素靠左部</h4>
+      <div class="property-group">
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('left', 'none')"
+        >
+          左对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('left', 'left')"
+        >
+          顶对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('left', 'average')"
+        >
+          分布对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('left', 'center')"
+        >
+          居中对齐
+        </button>
+        <button
+          style="margin-top: 5px; margin-left: 5px;"
+          @click="simulatorStore.selectAlign('left', 'right')"
+        >
+          底对齐
+        </button>
+      </div>
+    </div>
+
+    <div v-else-if="simulatorStore.selectedIC" class="ic-properties">
       <h3>{{ selectedICType?.name }} 属性</h3>
       <h3>{{ g_icId }}</h3>
 
       <div class="property-group">
         <button
           style="margin-top: 5px; margin-left: 5px;"
-          @click="onRotationChange(-90)"
+          @click="simulatorStore.selectRotation(-90)"
         >
           左转90°
         </button>
         <button
           style="margin-top: 5px; margin-left: 5px;"
-          @click="onRotationChange(90)"
+          @click="simulatorStore.selectRotation(90)"
         >
           右转90°
         </button>

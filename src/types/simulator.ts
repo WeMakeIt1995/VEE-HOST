@@ -106,6 +106,7 @@ export interface SimulatorState {
     type: 'connection' | 'ic' | 'pin' | null;
     id: string | null;
   };
+  selectElementGroup: boolean,
   activePin: string,
   serialOpen: boolean,
   serialOut: string,

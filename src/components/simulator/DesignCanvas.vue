@@ -178,6 +178,9 @@ onMounted(async () => {
     gridSize: 1,
     interactive: { linkMove: false },
 
+    drawGrid: true, // 开启网格绘制
+    gridColor: '#e0e0e0', // 网格颜色
+
     // linkPinning: false,
     // // gridSize: 5,
     // async: true,
