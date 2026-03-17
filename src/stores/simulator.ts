@@ -312,8 +312,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
     g_icGroupMap = {};
 
     if (g_paperPushStackEnable) {
-      g_paperDoStack = [];
-      g_paperDoStackCurrent = 0;
+      pushDoStack();
     }
 
     g_jointGraph.clear();
@@ -326,11 +325,15 @@ export const useSimulatorStore = defineStore('simulator', () => {
         continue;
       }
 
-      item.x = cell.position().x - g_pinImg.width;
-      item.y = cell.position().y - g_pinImg.width;
-      if (cell.angle() === 90 || cell.angle() === 270) {
-        item.x += g_pinImg.width / 2;
-        item.y -= g_pinImg.width / 2;
+      let parent = g_jointGraph.getCell(cell.parent());
+      item.x = parent.getBBox().x;
+      item.y = parent.getBBox().y;
+
+      if (! item.icType.topPins.length) {
+        item.x -= g_pinImg.width;
+      }
+      if (! item.icType.leftPins.length) {
+        item.y -= g_pinImg.width;
       }
     }
     return JSON.stringify(state.value, null, 4);
