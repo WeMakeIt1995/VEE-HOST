@@ -385,16 +385,16 @@ export const useSimulatorStore = defineStore('simulator', () => {
   function pushDoStack() {
     // console.log(new Error().stack);
 
+    let save = savePaper();
+    if (g_paperDoStackCurrent && g_paperDoStack[g_paperDoStackCurrent - 1] === save) {
+      console.log(`push do stack false 1`);
+      return;
+    }
     if (! g_paperPushStackEnable) {
-      console.log(`push do stack false`);
+      console.log(`push do stack false 2`);
       return;
     }
     console.log(`push do stack true`);
-
-    let save = savePaper();
-    if (g_paperDoStackCurrent && g_paperDoStack[g_paperDoStackCurrent - 1] === save) {
-      return;
-    }
 
     g_paperDoStack = g_paperDoStack.slice(0, g_paperDoStackCurrent);
     g_paperDoStack.push(save);
@@ -577,45 +577,28 @@ export const useSimulatorStore = defineStore('simulator', () => {
   // make sure get rect after rotate
   function getCellRect(cell: joint.dia.Cell) {
     let r = (cell as joint.dia.Element).getBBox();
+
     if (cell.angle() === 90 || cell.angle() === 270) {
-      console.log(`have angle`);
+      console.log(`cell have cell=${cell.id}, cell.angle=${cell.angle()}`);
+      r = (cell as joint.dia.Element).getBBox({rotate: true});
     }
+
+    // let parent = g_jointGraph.getCell(cell.parent());
+    // if (cell.getEmbeddedCells().length) {
+    //   parent = cell;
+    // }
+
+    // if ((parent.angle() === 90 || parent.angle() === 270) && parent.id === cell.id) {
+    // // if (parent.angle() === 90 || parent.angle() === 270) {
+    //   console.log(`parent have angle=${parent.angle()} parent=${parent.id} cell=${cell.id}`);
+    //   r.x += (r.width - r.height) / 2 + r.height / 2;
+    //   r.y -= (r.width - r.height) / 2 + r.width / 2;
+
+    //   let m = r.width;
+    //   r.width = r.height;
+    //   r.height = m;
+    // }
     return r;
-  }
-
-  function moveICPrepare(cell: joint.dia.Cell, mousePos: {x: number, y: number}) {
-    g_moveICStartMousePos = {... mousePos};
-    g_moveICStartParentPos = getCellRect(cell);
-    g_moveICStartChildPos = {};
-
-    cell.getEmbeddedCells().forEach((v) => {
-      g_moveICStartChildPos[v.id] = getCellRect(v);
-
-      // selection bound child-child
-      v.getEmbeddedCells().forEach((v) => {
-        g_moveICStartChildPos[v.id] = getCellRect(v);
-      });
-    });
-  }
-
-  function moveIC(cell: joint.dia.Cell, dx: number, dy: number) {
-    cell.getEmbeddedCells().forEach((v) => {
-      let p = g_moveICStartChildPos[v.id];
-      if (!p) {
-        return;
-      }
-      (v as joint.dia.Element).position(p.x + dx, p.y + dy);
-
-      // selection bound child-child
-      v.getEmbeddedCells().forEach((v) => {
-        let p = g_moveICStartChildPos[v.id];
-        if (!p) {
-          return;
-        }
-        (v as joint.dia.Element).position(p.x + dx, p.y + dy);
-      });
-    });
-    (cell as joint.dia.Element).position(g_moveICStartParentPos.x + dx, g_moveICStartParentPos.y + dy);
   }
 
   function changeHighlightLinks(links: joint.dia.Link[], color: string = 'lightblue') {
@@ -717,7 +700,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
 
       const element = elementView.model;
 
-      g_moveICParent = element.getParentCell();
+      g_moveICParent = element.getParentCell() || element;
       // selection bound
       if (g_moveICParent?.getParentCell()) {
         g_moveICParent = g_moveICParent.getParentCell();
@@ -725,7 +708,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
       if (g_moveICParent) {
         evt.stopImmediatePropagation();
 
-        moveICPrepare(g_moveICParent, {x: evt.clientX!, y: evt.clientY!});
+        g_moveICStartMousePos = {x: evt.clientX!, y: evt.clientY!};
       }
     });
 
@@ -739,8 +722,12 @@ export const useSimulatorStore = defineStore('simulator', () => {
       const dx = evt.clientX! - g_moveICStartMousePos.x;
       const dy = evt.clientY! - g_moveICStartMousePos.y;
 
-      moveIC(g_moveICParent, dx, dy);
+      if (cellView.model !== g_moveICParent) {
+        (cellView.model as joint.dia.Element).translate(-dx, -dy);
+      }
+      (g_moveICParent as joint.dia.Element).translate(dx, dy);
       g_moveICParentMoved = true;
+      g_moveICStartMousePos = {x: evt.clientX!, y: evt.clientY!};
 
       paper.trigger('render');
     });
@@ -2207,8 +2194,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
     function horizontalAlign(cells: joint.dia.Cell[], startX: number) {
       cells.reduce((acc, cell) => {
         let r = acc + getCellRect(cell).width;
-        moveICPrepare(cell, {x: 0, y: 0});
-        moveIC(cell, acc - getCellRect(cell).x, 0);
+        (cell as joint.dia.Element).translate(acc - getCellRect(cell).x, 0);
         return r;
       }, startX);
     }
@@ -2216,8 +2202,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
     function verticalAlign(cells: joint.dia.Cell[], startY: number) {
       cells.reduce((acc, cell) => {
         let r = acc + getCellRect(cell).height;
-        moveICPrepare(cell, {x: 0, y: 0});
-        moveIC(cell, 0, acc - getCellRect(cell).y);
+        (cell as joint.dia.Element).translate(0, acc - getCellRect(cell).y);
         return r;
       }, startY);
     }
@@ -2227,8 +2212,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
       switch (mode) {
       case 'none': {
         g_selectionBound.getEmbeddedCells().forEach((v) => {
-          moveICPrepare(v, {x: 0, y: 0});
-          moveIC(v, 0, selectionRect.y - v.position().y);
+          (v as joint.dia.Element).translate(0, selectionRect.y - getCellRect(v).y);
         });
       } break;
 
@@ -2236,7 +2220,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().x - b.position().x;
+          return getCellRect(a).x - getCellRect(b).x;
         });
         horizontalAlign(cells, selectionRect.x);
       } break;
@@ -2245,13 +2229,11 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().x - b.position().x;
+          return getCellRect(a).x - getCellRect(b).x;
         });
-        cells.forEach((cell, idx) => {
-          moveICPrepare(cell, {x: 0, y: 0});
-          moveIC(
-            cell,
-            selectionRect.x + selectionRect.width / cells.length / 2 * (idx * 2 + 1) - getCellRect(cell).width / 2 - getCellRect(cell).x,
+        cells.forEach((v, idx) => {
+          (v as joint.dia.Element).translate(
+            selectionRect.x + selectionRect.width / cells.length / 2 * (idx * 2 + 1) - getCellRect(v).width / 2 - getCellRect(v).x,
             0
           );
         });
@@ -2261,7 +2243,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().x - b.position().x;
+          return getCellRect(a).x - getCellRect(b).x;
         });
         let startX = selectionRect.x + (selectionRect.width - cells.reduce((acc, cell) => acc + getCellRect(cell).width, 0)) / 2;
         horizontalAlign(cells, startX);
@@ -2271,7 +2253,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().x - b.position().x;
+          return getCellRect(a).x - getCellRect(b).x;
         });
         let startX = selectionRect.x + selectionRect.width - cells.reduce((acc, cell) => acc + getCellRect(cell).width, 0);
         horizontalAlign(cells, startX);
@@ -2283,8 +2265,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
       switch (mode) {
       case 'none': {
         g_selectionBound.getEmbeddedCells().forEach((v) => {
-          moveICPrepare(v, {x: 0, y: 0});
-          moveIC(v, selectionRect.x + selectionRect.width - getCellRect(v).width - v.position().x, 0);
+          (v as joint.dia.Element).translate(selectionRect.x + selectionRect.width - getCellRect(v).width - getCellRect(v).x, 0);
         });
       } break;
 
@@ -2292,7 +2273,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().y - b.position().y;
+          return getCellRect(a).y - getCellRect(b).y;
         });
         verticalAlign(cells, selectionRect.y);
       } break;
@@ -2301,14 +2282,12 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().x - b.position().x;
+          return getCellRect(a).x - getCellRect(b).x;
         });
-        cells.forEach((cell, idx) => {
-          moveICPrepare(cell, {x: 0, y: 0});
-          moveIC(
-            cell,
+        cells.forEach((v, idx) => {
+          (v as joint.dia.Element).translate(
             0,
-            selectionRect.y + selectionRect.height / cells.length / 2 * (idx * 2 + 1) - getCellRect(cell).height / 2 - getCellRect(cell).y
+            selectionRect.y + selectionRect.height / cells.length / 2 * (idx * 2 + 1) - getCellRect(v).height / 2 - getCellRect(v).y
           );
         });
       } break;
@@ -2317,7 +2296,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().y - b.position().y;
+          return getCellRect(a).y - getCellRect(b).y;
         });
         const startY = selectionRect.y + (selectionRect.height - cells.reduce((acc, cell) => acc + getCellRect(cell).height, 0)) / 2;
         verticalAlign(cells, startY);
@@ -2327,7 +2306,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().y - b.position().y;
+          return getCellRect(a).y - getCellRect(b).y;
         });
         const startY = selectionRect.y + selectionRect.height - cells.reduce((acc, cell) => acc + getCellRect(cell).height, 0);
         verticalAlign(cells, startY);
@@ -2339,8 +2318,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
       switch (mode) {
       case 'none': {
         g_selectionBound.getEmbeddedCells().forEach((v) => {
-          moveICPrepare(v, {x: 0, y: 0});
-          moveIC(v, 0, selectionRect.y + selectionRect.height - v.position().y - getCellRect(v).height);
+          (v as joint.dia.Element).translate(0, selectionRect.y + selectionRect.height - getCellRect(v).y - getCellRect(v).height);
         });
       } break;
 
@@ -2348,7 +2326,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().x - b.position().x;
+          return getCellRect(a).x - getCellRect(b).x;
         });
         horizontalAlign(cells, selectionRect.x);
       } break;
@@ -2357,13 +2335,11 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().x - b.position().x;
+          return getCellRect(a).x - getCellRect(b).x;
         });
-        cells.forEach((cell, idx) => {
-          moveICPrepare(cell, {x: 0, y: 0});
-          moveIC(
-            cell,
-            selectionRect.x + selectionRect.width / cells.length / 2 * (idx * 2 + 1) - getCellRect(cell).width / 2 - getCellRect(cell).x,
+        cells.forEach((v, idx) => {
+          (v as joint.dia.Element).translate(
+            selectionRect.x + selectionRect.width / cells.length / 2 * (idx * 2 + 1) - getCellRect(v).width / 2 - getCellRect(v).x,
             0
           );
         });
@@ -2373,7 +2349,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().x - b.position().x;
+          return getCellRect(a).x - getCellRect(b).x;
         });
         let startX = selectionRect.x + (selectionRect.width - cells.reduce((acc, cell) => acc + getCellRect(cell).width, 0)) / 2;
         horizontalAlign(cells, startX);
@@ -2383,7 +2359,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().x - b.position().x;
+          return getCellRect(a).x - getCellRect(b).x;
         });
         let startX = selectionRect.x + selectionRect.width - cells.reduce((acc, cell) => acc + getCellRect(cell).width, 0);
         horizontalAlign(cells, startX);
@@ -2395,8 +2371,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
       switch (mode) {
       case 'none': {
         g_selectionBound.getEmbeddedCells().forEach((v) => {
-          moveICPrepare(v, {x: 0, y: 0});
-          moveIC(v, selectionRect.x - v.position().x, 0);
+          (v as joint.dia.Element).translate(selectionRect.x - getCellRect(v).x, 0);
         });
       } break;
 
@@ -2404,7 +2379,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().y - b.position().y;
+          return getCellRect(a).y - getCellRect(b).y;
         });
         verticalAlign(cells, selectionRect.y);
       } break;
@@ -2413,14 +2388,12 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().x - b.position().x;
+          return getCellRect(a).x - getCellRect(b).x;
         });
-        cells.forEach((cell, idx) => {
-          moveICPrepare(cell, {x: 0, y: 0});
-          moveIC(
-            cell,
+        cells.forEach((v, idx) => {
+          (v as joint.dia.Element).translate(
             0,
-            selectionRect.y + selectionRect.height / cells.length / 2 * (idx * 2 + 1) - getCellRect(cell).height / 2 - getCellRect(cell).y
+            selectionRect.y + selectionRect.height / cells.length / 2 * (idx * 2 + 1) - getCellRect(v).height / 2 - getCellRect(v).y
           );
         });
       } break;
@@ -2429,7 +2402,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().y - b.position().y;
+          return getCellRect(a).y - getCellRect(b).y;
         });
         const startY = selectionRect.y + (selectionRect.height - cells.reduce((acc, cell) => acc + getCellRect(cell).height, 0)) / 2;
         verticalAlign(cells, startY);
@@ -2439,7 +2412,7 @@ export const useSimulatorStore = defineStore('simulator', () => {
         selectAlign(side, 'none', false);
 
         const cells = g_selectionBound.getEmbeddedCells().sort((a, b) => {
-          return a.position().y - b.position().y;
+          return getCellRect(a).y - getCellRect(b).y;
         });
         const startY = selectionRect.y + selectionRect.height - cells.reduce((acc, cell) => acc + getCellRect(cell).height, 0);
         verticalAlign(cells, startY);
